@@ -1,8 +1,8 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
-    <title>Reproductor de Clips Aleatorios</title>
+    <title>Random Clip Player</title>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
     <script src="https://cdn.jsdelivr.net/npm/hls.js@latest"></script>
     <script type="text/javascript">
@@ -18,7 +18,7 @@
 
             function fetchClips(page) {
                 if (page > maxPages || !cursor) {
-                    console.log('No hay más páginas para obtener o no hay cursor disponible.');
+                    console.log('No more pages to fetch or no cursor available.');
                     if (!firstBatchLoaded && allClips.length > 0) {
                         firstBatchLoaded = true;
                         playRandomClip();
@@ -27,11 +27,11 @@
                 }
 
                 const apiUrl = `${baseUrl}&cursor=${cursor}`;
-                console.log(`Obteniendo página: ${page} de la URL: ${apiUrl}`);
+                console.log(`Fetching page: ${page} from URL: ${apiUrl}`);
 
                 $.getJSON(apiUrl, function(data) {
                     if (data.clips && data.clips.length > 0) {
-                        console.log(`Se obtuvieron ${data.clips.length} clips de la página ${page}`);
+                        console.log(`Fetched ${data.clips.length} clips from page ${page}`);
                         allClips = allClips.concat(data.clips);
                         cursor = data.nextCursor || '';
                         if (!firstBatchLoaded) {
@@ -40,25 +40,25 @@
                         }
                         fetchClips(page + 1);
                     } else {
-                        console.log('No se encontraron clips en el lote actual.');
+                        console.log('No clips found in current batch.');
                         if (!firstBatchLoaded && allClips.length > 0) {
                             firstBatchLoaded = true;
                             playRandomClip();
                         } else {
-                            console.error('No se encontraron clips.');
+                            console.error('No clips found.');
                         }
                     }
                 }).fail(function() {
-                    console.error('Error al obtener los datos de los clips.');
+                    console.error('Error fetching clip data.');
                 });
             }
 
             function playRandomClip() {
-                console.log('Todos los datos de clips:', allClips);
+                console.log('All clips data:', allClips);
                 if (allClips.length > 0) {
                     const randomIndex = Math.floor(Math.random() * allClips.length);
                     const clip = allClips[randomIndex];
-                    console.log('Reproduciendo clip:', clip);
+                    console.log('Playing clip:', clip);
 
                     if (clip && clip.clip_url) {
                         const videoPlayer = document.getElementById('clipPlayer');
@@ -73,21 +73,21 @@
                             videoPlayer.src = clip.clip_url;
                             videoPlayer.play();
                         } else {
-                            console.error('HLS no es compatible con este navegador.');
+                            console.error('HLS is not supported in this browser.');
                         }
 
                         videoPlayer.onended = function() {
                             playRandomClip();
                         };
                     } else {
-                        console.error('Datos de clip inválidos.');
+                        console.error('Invalid clip data.');
                     }
                 } else {
-                    console.error('No hay clips disponibles para reproducir.');
+                    console.error('No clips available to play.');
                 }
             }
 
-            // Iniciar la obtención de clips
+            // Start fetching clips
             fetchClips(1);
         });
     </script>
