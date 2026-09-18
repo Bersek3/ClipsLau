@@ -443,5 +443,19 @@ app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 if __name__ == "__main__":
     port = 7860
+    # Clean up stale processes on port 7860 on Windows if present
+    try:
+        import subprocess
+        out = subprocess.check_output(f'netstat -ano | findstr :{port}', shell=True).decode()
+        for line in out.strip().split('\n'):
+            parts = line.strip().split()
+            if len(parts) >= 5 and parts[1].endswith(f':{port}') and 'LISTENING' in line.upper():
+                pid = parts[-1]
+                if int(pid) != os.getpid():
+                    print(f"Liberando puerto {port} ocupado por proceso PID {pid}...")
+                    subprocess.run(f'taskkill /F /PID {pid}', shell=True, capture_output=True)
+    except Exception:
+        pass
+
     print(f"Iniciando Voice Changer en http://localhost:{port} ...")
     uvicorn.run("server:app", host="127.0.0.1", port=port, reload=False)
