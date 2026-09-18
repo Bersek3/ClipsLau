@@ -1067,59 +1067,53 @@ async function processLiveSentenceChunk(blob) {
             body: formData
         });
 
-            if (res.status === 402) {
-                creditAlertBanner.classList.remove("hidden");
-                throw new Error("Créditos de API de desarrollador insuficientes (Error 402).");
+        if (res.status === 402) {
+            creditAlertBanner.classList.remove("hidden");
+            throw new Error("Créditos de API de desarrollador insuficientes (Error 402).");
+        }
+
+        if (!res.ok) {
+            const err = await res.json().catch(() => ({ detail: "Error" }));
+            throw new Error(err.detail || "Error en el servidor");
+        }
+
+        const data = await res.json();
+        const base64Audio = data.audio_base64;
+        const text = data.transcription;
+
+        feedItem.classList.add("playing");
+        feedItem.innerHTML = `
+            <div class="feed-main">
+                <div class="feed-text">"${text}"</div>
+                <div class="feed-voice-sub">${emoji} ${currentVoiceObj.name}</div>
+            </div>
+            <div class="feed-meta">
+                <span class="feed-time">${timeStr}</span>
+                <button class="btn-listen-local" title="Escuchar en tus auriculares" onclick="playLocally('${base64Audio}')">▶️</button>
+                <button class="btn-replay-discord" title="Volver a transmitir a Discord">
+                    <span>🔁</span> Re-transmitir a Discord
+                </button>
+                <span class="feed-tag done">✓ EMITIDO</span>
+            </div>
+        `;
+
+        feedItem.querySelector(".btn-replay-discord").onclick = () => {
+            replayToDiscord(base64Audio, feedItem, text);
+        };
+
+        setTimeout(() => feedItem.classList.remove("playing"), 2000);
+
+        if (liveAudioCard && liveAudioPlayer) {
+            liveAudioCard.classList.remove("hidden");
+            liveAudioPlayer.src = base64Audio;
+        }
+
+        if (checkHearMyself && checkHearMyself.checked) {
+            if (liveAudioPlayer) liveAudioPlayer.play().catch(() => {});
+            else if (audioPlayer) {
+                audioPlayer.src = base64Audio;
+                audioPlayer.play().catch(() => {});
             }
-
-            if (!res.ok) {
-                const err = await res.json().catch(() => ({ detail: "Error" }));
-                throw new Error(err.detail || "Error en el servidor");
-            }
-
-            const data = await res.json();
-            const base64Audio = data.audio_base64;
-            const text = data.transcription;
-
-            feedItem.classList.add("playing");
-            feedItem.innerHTML = `
-                <div class="feed-main">
-                    <div class="feed-text">"${text}"</div>
-                    <div class="feed-voice-sub">${emoji} ${currentVoiceObj.name}</div>
-                </div>
-                <div class="feed-meta">
-                    <span class="feed-time">${timeStr}</span>
-                    <button class="btn-listen-local" title="Escuchar en tus auriculares" onclick="playLocally('${base64Audio}')">▶️</button>
-                    <button class="btn-replay-discord" title="Volver a transmitir a Discord">
-                        <span>🔁</span> Re-transmitir a Discord
-                    </button>
-                    <span class="feed-tag done">✓ EMITIDO</span>
-                </div>
-            `;
-
-            feedItem.querySelector(".btn-replay-discord").onclick = () => {
-                replayToDiscord(base64Audio, feedItem, text);
-            };
-
-            setTimeout(() => feedItem.classList.remove("playing"), 2000);
-
-            if (liveAudioCard && liveAudioPlayer) {
-                liveAudioCard.classList.remove("hidden");
-                liveAudioPlayer.src = base64Audio;
-            }
-
-            if (checkHearMyself && checkHearMyself.checked) {
-                if (liveAudioPlayer) liveAudioPlayer.play().catch(() => {});
-                else if (audioPlayer) {
-                    audioPlayer.src = base64Audio;
-                    audioPlayer.play().catch(() => {});
-                }
-            }
-        } else {
-            // Web Client fallback for continuous mode
-            const textToSay = liveRecognizedText || "Frase detectada por voz";
-            await processLiveTextDirect(textToSay);
-            feedItem.remove();
         }
 
     } catch (e) {
