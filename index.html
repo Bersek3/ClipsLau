@@ -29,8 +29,8 @@
                     </svg>
                 </div>
                 <div>
-                    <h1>FISH AUDIO <span>LIVE</span></h1>
-                    <p class="subtitle">AI Voice Changer & Speech Studio</p>
+                    <h1>CLON VOCES CON IA</h1>
+                    <p class="subtitle">creado por Bersek</p>
                 </div>
             </div>
 
@@ -162,6 +162,15 @@
                                 <div class="empty-feed-msg">Cuando actives la transmisión y hables, verás las frases clonadas transmitiéndose aquí...</div>
                             </div>
                         </div>
+
+                        <!-- Live Output Monitor Player -->
+                        <div id="liveAudioCard" class="latest-audio-card hidden" style="margin-top: 16px;">
+                            <div class="audio-info">
+                                <span class="audio-title">🔊 Última Frase Transmitida</span>
+                                <span id="liveAudioStatusTag" class="tag-status">✓ Emitido</span>
+                            </div>
+                            <audio id="liveAudioPlayer" controls style="width:100%; margin-top:10px;"></audio>
+                        </div>
                     </div>
                 </div>
 
@@ -208,10 +217,14 @@
                         <!-- Audio Player Output -->
                         <div id="latestAudioCard" class="latest-audio-card hidden">
                             <div class="audio-info">
-                                <span class="audio-title">✨ Última Salida Clonada</span>
-                                <span id="audioDuration" class="audio-duration">0.0s</span>
+                                <span class="audio-title">✨ Última Voz Clonada</span>
+                                <span id="audioDuration" class="tag-status">Listo</span>
                             </div>
-                            <audio id="audioPlayer" controls></audio>
+                            <audio id="audioPlayer" controls style="width:100%; margin-top:10px;"></audio>
+                            <div class="audio-actions-row" style="margin-top: 10px; display: flex; gap: 10px;">
+                                <button id="btnReplayMic" class="btn btn-sm btn-outline">🔁 Volver a Escuchar</button>
+                                <a id="btnDownloadMic" class="btn btn-sm btn-outline" download="voz_clonada.mp3">⬇️ Descargar MP3</a>
+                            </div>
                         </div>
                     </div>
                 </div>
@@ -247,6 +260,19 @@
                                 <span>Generar y Reproducir en Directo</span>
                             </button>
                             <button id="btnClearTTS" class="btn btn-outline">Limpiar</button>
+                        </div>
+
+                        <!-- Audio Player Output for TTS -->
+                        <div id="ttsAudioCard" class="latest-audio-card hidden" style="margin-top: 20px;">
+                            <div class="audio-info">
+                                <span class="audio-title">✨ Audio Generado con Voz IA</span>
+                                <span id="ttsAudioStatusTag" class="tag-status">Listo</span>
+                            </div>
+                            <audio id="ttsAudioPlayer" controls style="width:100%; margin-top:10px;"></audio>
+                            <div class="audio-actions-row" style="margin-top: 10px; display: flex; gap: 10px;">
+                                <button id="btnReplayTTS" class="btn btn-sm btn-outline">🔁 Volver a Escuchar</button>
+                                <a id="btnDownloadTTS" class="btn btn-sm btn-outline" download="voz_ia.mp3">⬇️ Descargar MP3</a>
+                            </div>
                         </div>
                     </div>
                 </div>

@@ -54,6 +54,16 @@ const transcriptionText = document.getElementById("transcriptionText");
 const transcriptionStatus = document.getElementById("transcriptionStatus");
 const latestAudioCard = document.getElementById("latestAudioCard");
 const audioPlayer = document.getElementById("audioPlayer");
+const btnReplayMic = document.getElementById("btnReplayMic");
+const btnDownloadMic = document.getElementById("btnDownloadMic");
+const ttsAudioCard = document.getElementById("ttsAudioCard");
+const ttsAudioPlayer = document.getElementById("ttsAudioPlayer");
+const btnReplayTTS = document.getElementById("btnReplayTTS");
+const btnDownloadTTS = document.getElementById("btnDownloadTTS");
+const ttsAudioStatusTag = document.getElementById("ttsAudioStatusTag");
+const liveAudioCard = document.getElementById("liveAudioCard");
+const liveAudioPlayer = document.getElementById("liveAudioPlayer");
+const liveAudioStatusTag = document.getElementById("liveAudioStatusTag");
 const activeVoiceName = document.getElementById("activeVoiceName");
 const activeVoiceDesc = document.getElementById("activeVoiceDesc");
 const activeVoiceId = document.getElementById("activeVoiceId");
@@ -251,8 +261,18 @@ async function loadAudioDevices() {
     // Query browser media devices to allow exact physical deviceId binding
     try {
         if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
-            const navDevices = await navigator.mediaDevices.enumerateDevices();
-            browserAudioInputs = navDevices.filter(d => d.kind === 'audioinput');
+            let navDevices = await navigator.mediaDevices.enumerateDevices();
+            let audioIns = navDevices.filter(d => d.kind === 'audioinput');
+            const hasEmptyLabels = audioIns.some(d => !d.label || d.label.trim() === "");
+            if (hasEmptyLabels && navigator.mediaDevices.getUserMedia) {
+                try {
+                    const temp = await navigator.mediaDevices.getUserMedia({ audio: true });
+                    temp.getTracks().forEach(t => t.stop());
+                    navDevices = await navigator.mediaDevices.enumerateDevices();
+                    audioIns = navDevices.filter(d => d.kind === 'audioinput');
+                } catch (permErr) {}
+            }
+            browserAudioInputs = audioIns;
         }
     } catch (mErr) {}
 
@@ -962,9 +982,17 @@ async function processLiveTextDirect(text) {
             setTimeout(() => feedItem.classList.remove("playing"), 2000);
         };
 
-        if (checkHearMyself.checked) {
-            audioPlayer.src = URL.createObjectURL(audioBlob);
-            audioPlayer.play().catch(() => {});
+        if (liveAudioCard && liveAudioPlayer) {
+            liveAudioCard.classList.remove("hidden");
+            liveAudioPlayer.src = URL.createObjectURL(audioBlob);
+        }
+
+        if (checkHearMyself && checkHearMyself.checked) {
+            if (liveAudioPlayer) liveAudioPlayer.play().catch(() => {});
+            else if (audioPlayer) {
+                audioPlayer.src = URL.createObjectURL(audioBlob);
+                audioPlayer.play().catch(() => {});
+            }
         }
 
     } catch (e) {
@@ -1051,9 +1079,17 @@ async function processLiveSentenceChunk(blob) {
 
             setTimeout(() => feedItem.classList.remove("playing"), 2000);
 
-            if (checkHearMyself.checked) {
-                audioPlayer.src = base64Audio;
-                audioPlayer.play().catch(() => {});
+            if (liveAudioCard && liveAudioPlayer) {
+                liveAudioCard.classList.remove("hidden");
+                liveAudioPlayer.src = base64Audio;
+            }
+
+            if (checkHearMyself && checkHearMyself.checked) {
+                if (liveAudioPlayer) liveAudioPlayer.play().catch(() => {});
+                else if (audioPlayer) {
+                    audioPlayer.src = base64Audio;
+                    audioPlayer.play().catch(() => {});
+                }
             }
         } else {
             // Web Client fallback for continuous mode
@@ -1220,9 +1256,22 @@ async function sendVoiceToConvert(audioBlob) {
             transcriptionText.textContent = `"${data.transcription}"`;
             transcriptionStatus.textContent = "✓ Clonado con Éxito";
 
-            latestAudioCard.classList.remove("hidden");
-            audioPlayer.src = data.audio_base64;
-            audioPlayer.play();
+            if (latestAudioCard) latestAudioCard.classList.remove("hidden");
+            if (audioPlayer) {
+                audioPlayer.src = data.audio_base64;
+                audioPlayer.play().catch(e => console.warn(e));
+            }
+            if (btnDownloadMic) {
+                btnDownloadMic.href = data.audio_base64;
+            }
+            if (btnReplayMic) {
+                btnReplayMic.onclick = () => {
+                    if (audioPlayer) {
+                        audioPlayer.currentTime = 0;
+                        audioPlayer.play().catch(() => {});
+                    }
+                };
+            }
 
             showToast("¡Voz clonada y transmitida con éxito!");
         } else {
@@ -1285,9 +1334,41 @@ async function sendToFishAudio(text) {
         }
 
         const audioUrl = URL.createObjectURL(audioBlob);
-        latestAudioCard.classList.remove("hidden");
-        audioPlayer.src = audioUrl;
-        audioPlayer.play();
+
+        // 1. Update TTS Tab Audio Card & Player
+        if (ttsAudioCard) ttsAudioCard.classList.remove("hidden");
+        if (ttsAudioPlayer) {
+            ttsAudioPlayer.src = audioUrl;
+            ttsAudioPlayer.play().catch(e => console.warn(e));
+        }
+        if (btnDownloadTTS) {
+            btnDownloadTTS.href = audioUrl;
+        }
+        if (btnReplayTTS) {
+            btnReplayTTS.onclick = () => {
+                if (ttsAudioPlayer) {
+                    ttsAudioPlayer.currentTime = 0;
+                    ttsAudioPlayer.play().catch(() => {});
+                }
+            };
+        }
+
+        // 2. Also keep PTT tab player in sync
+        if (latestAudioCard) latestAudioCard.classList.remove("hidden");
+        if (audioPlayer) {
+            audioPlayer.src = audioUrl;
+        }
+        if (btnDownloadMic) {
+            btnDownloadMic.href = audioUrl;
+        }
+        if (btnReplayMic) {
+            btnReplayMic.onclick = () => {
+                if (audioPlayer) {
+                    audioPlayer.currentTime = 0;
+                    audioPlayer.play().catch(() => {});
+                }
+            };
+        }
 
         transcriptionStatus.textContent = "✓ Reproducido con éxito";
         showToast("¡Audio generado y reproducido!");
