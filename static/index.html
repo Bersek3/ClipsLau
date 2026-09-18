@@ -33,6 +33,7 @@
                 </div>
             </div>
 
+            <div class="nav-controls">
                 <!-- User Auth Profile Widget -->
                 <div id="userProfileWidget" class="user-profile-widget">
                     <button id="btnOpenLoginModal" class="btn btn-primary btn-sm btn-glow">
@@ -46,6 +47,11 @@
                         </div>
                         <button id="btnLogout" class="btn btn-outline btn-xs" title="Cerrar sesión">Salir</button>
                     </div>
+                </div>
+
+                <div id="apiStatusBadge" class="status-badge checking">
+                    <span class="pulse-dot"></span>
+                    <span id="statusText">Verificando API...</span>
                 </div>
 
                 <a href="https://fish.audio/app/developers" target="_blank" class="btn btn-outline btn-sm">
