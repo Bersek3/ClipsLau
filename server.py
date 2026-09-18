@@ -292,29 +292,91 @@ def replay_audio(req: ReplayRequest):
 _whisper_model = None
 
 def get_whisper_model():
-    """Loads faster-whisper model (base) as a fast singleton for ultra-precise speech recognition."""
+    """Loads faster-whisper model (small) as a singleton for fast Spanish speech recognition."""
     global _whisper_model
     if _whisper_model is None:
         try:
             from faster_whisper import WhisperModel
-            print("[STT] Inicializando modelo Whisper AI (base)...")
-            _whisper_model = WhisperModel("base", device="cpu", compute_type="int8")
-            print("[STT] ✓ Whisper AI listo para reconocimiento ultra-preciso.")
+            print("[STT] Inicializando modelo Whisper AI (small - 244M params)...")
+            print("[STT] Primera carga puede tomar unos minutos si descarga el modelo (~460MB)...")
+            _whisper_model = WhisperModel("small", device="cpu", compute_type="int8")
+            print("[STT] OK: Whisper AI (small) listo para reconocimiento rápido.")
         except Exception as e:
             print(f"[STT] Advertencia cargando Whisper AI: {e}")
+            print(f"[STT] Instala con: pip install faster-whisper")
             _whisper_model = False
     return _whisper_model if _whisper_model is not False else None
 
+# Known Whisper hallucination patterns (repeated text, subtitles artifacts, etc.)
+_HALLUCINATION_PATTERNS = [
+    "subtítulos", "subtitulos", "subtitulado", "suscríbete", "suscribete",
+    "gracias por ver", "amara.org", "www.", "http", ".com", ".org",
+    "música", "aplausos", "risas",
+]
+
+def filter_whisper_hallucinations(text: str) -> str:
+    """Filters common Whisper hallucinations and repetitive artifacts."""
+    if not text:
+        return ""
+    
+    # 1. Remove text that matches known hallucination patterns
+    text_lower = text.lower().strip()
+    for pattern in _HALLUCINATION_PATTERNS:
+        if pattern in text_lower and len(text_lower) < 40:
+            print(f"[STT Filter] Hallucination detected and removed: '{text}'")
+            return ""
+    
+    # 2. Detect excessive repetition (Whisper sometimes loops the same phrase)
+    words = text.split()
+    if len(words) >= 6:
+        # Check if the text is mostly repeated 2-3 word ngrams
+        bigrams = [f"{words[i]} {words[i+1]}" for i in range(len(words)-1)]
+        from collections import Counter
+        bigram_counts = Counter(bigrams)
+        most_common_count = bigram_counts.most_common(1)[0][1] if bigram_counts else 0
+        if most_common_count >= 3 and most_common_count / len(bigrams) > 0.4:
+            # More than 40% of bigrams are repeated -> hallucination
+            # Keep only first occurrence
+            unique_part = []
+            seen_bigrams = set()
+            for i, w in enumerate(words):
+                bg = f"{words[i]} {words[i+1]}" if i < len(words)-1 else ""
+                if bg and bg in seen_bigrams:
+                    break
+                seen_bigrams.add(bg)
+                unique_part.append(w)
+            text = " ".join(unique_part)
+            print(f"[STT Filter] Repetition cleaned: '{text}'")
+    
+    # 3. Remove leading/trailing punctuation artifacts
+    text = text.strip(" .,;:!?¿¡-—")
+    
+    return text.strip()
+
 def clean_and_convert_audio(content: bytes) -> bytes:
-    """Uses FFmpeg with dynamic normalization and noise filtering to clean microphone audio."""
+    """Uses FFmpeg with advanced noise reduction, bandpass filter, and dynamic normalization."""
     import subprocess
     import imageio_ffmpeg
     ffmpeg_exe = imageio_ffmpeg.get_ffmpeg_exe()
     
+    # Advanced audio filter chain:
+    # 1. highpass=f=80 — Remove low-frequency rumble (AC hum, breathing)
+    # 2. lowpass=f=8000 — Remove high-frequency hiss above speech range
+    # 3. afftdn=nf=-25 — FFT-based noise reduction (removes background noise)
+    # 4. acompressor — Compress dynamic range for consistent volume
+    # 5. dynaudnorm — Normalize volume dynamically across the clip
+    audio_filter = (
+        "highpass=f=80,"
+        "lowpass=f=8000,"
+        "afftdn=nf=-25:nt=w:om=o,"
+        "acompressor=threshold=-20dB:ratio=4:attack=5:release=50,"
+        "dynaudnorm=f=75:g=15:p=0.95"
+    )
+    
     proc = subprocess.Popen(
         [
             ffmpeg_exe, "-y", "-i", "pipe:0",
-            "-af", "highpass=f=80,lowpass=f=7500,dynaudnorm=f=75:g=15",
+            "-af", audio_filter,
             "-f", "wav", "-ar", "16000", "-ac", "1", "pipe:1"
         ],
         stdin=subprocess.PIPE,
@@ -329,8 +391,10 @@ def clean_and_convert_audio(content: bytes) -> bytes:
     return wav_bytes
 
 def transcribe_audio_pipeline(wav_bytes: bytes, lang: str = "es-CL") -> str:
-    """Transcribes audio using Whisper AI with automatic fallback to Google STT."""
-    # 1. Primary Engine: Whisper AI (State-of-the-art accuracy)
+    """Transcribes audio using Whisper AI (medium) with optimized params and automatic fallback to Google STT."""
+    import time as _time
+    
+    # 1. Primary Engine: Whisper AI Medium (769M params — high accuracy for Spanish)
     whisper = get_whisper_model()
     if whisper:
         try:
@@ -343,20 +407,37 @@ def transcribe_audio_pipeline(wav_bytes: bytes, lang: str = "es-CL") -> str:
             # Extract 2-letter language code (es-CL -> es)
             whisper_lang = lang.split("-")[0] if "-" in lang else (lang or "es")
             
+            t0 = _time.time()
             segments, info = whisper.transcribe(
                 audio_data,
                 language=whisper_lang,
-                beam_size=1,
-                best_of=1,
-                temperature=0.0,
-                condition_on_previous_text=False,
-                vad_filter=True,
-                vad_parameters=dict(min_silence_duration_ms=200)
+                task="transcribe",     # Force transcription, prevent translation to English
+                initial_prompt="Contexto: Comentarios deportivos, gritos, fútbol, frases informales chilenas (weón, ctm, cachai, bacán, Alexis, copa, gol, pego, etc.).",
+                beam_size=2,           # Reduced from 5 to 2 for faster processing
+                best_of=2,             # Reduced from 3 to 2 for faster processing
+                temperature=0.0,       # Deterministic decoding (no randomness)
+                condition_on_previous_text=False,  # Prevent error propagation
+                vad_filter=True,       # Built-in voice activity detection
+                vad_parameters=dict(
+                    min_silence_duration_ms=300,
+                    speech_pad_ms=200
+                ),
+                no_speech_threshold=0.6,      # Be stricter about detecting speech
+                log_prob_threshold=-1.0,       # Filter low-confidence segments
+                compression_ratio_threshold=2.4,  # Filter repetitive hallucinations
             )
-            text = " ".join([seg.text.strip() for seg in segments]).strip()
+            
+            raw_text = " ".join([seg.text.strip() for seg in segments]).strip()
+            elapsed = _time.time() - t0
+            
+            # Apply hallucination filter
+            text = filter_whisper_hallucinations(raw_text)
+            
             if text:
-                print(f"[STT Whisper AI] Transcripción exitosa ({whisper_lang}): \"{text}\"")
+                print(f"[STT Whisper AI] OK: Transcripción ({whisper_lang}, {elapsed:.1f}s): \"{text}\"")
                 return text
+            else:
+                print(f"[STT Whisper AI] Texto filtrado como alucinación: \"{raw_text}\" -> Intentando Google STT...")
         except Exception as we:
             print(f"[STT] Whisper falló ({we}), recurriendo a Google Speech Recognition...")
 
@@ -378,6 +459,31 @@ def transcribe_audio_pipeline(wav_bytes: bytes, lang: str = "es-CL") -> str:
     except Exception as ge:
         print(f"[STT] Error en Google STT: {ge}")
         raise HTTPException(status_code=500, detail=f"Error en transcripción: {ge}")
+
+@app.post("/api/transcribe")
+async def transcribe_only(
+    file: UploadFile = File(...),
+):
+    """Pure STT endpoint — transcribes audio without generating TTS. Used by live mode."""
+    try:
+        content = await file.read()
+        if len(content) < 800:
+            raise HTTPException(status_code=400, detail="Audio demasiado corto.")
+        
+        wav_bytes = clean_and_convert_audio(content)
+        cfg = load_config()
+        current_lang = cfg.get("language", "es-CL")
+        text = transcribe_audio_pipeline(wav_bytes, lang=current_lang)
+        
+        if not text or not text.strip():
+            raise HTTPException(status_code=400, detail="No se detectaron palabras claras.")
+        
+        return {"transcription": text}
+    except HTTPException:
+        raise
+    except Exception as e:
+        print(f"[Transcribe] Error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 @app.post("/api/voice-convert")
 async def voice_convert_audio(

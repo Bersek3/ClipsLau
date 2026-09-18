@@ -690,13 +690,25 @@ async function startLiveStreaming() {
                 liveSpeechRecognizer.interimResults = true;
                 liveSpeechRecognizer.lang = (appConfig && appConfig.language) || "es-CL";
                 liveSpeechRecognizer.onresult = (e) => {
+                    // Browser STT is PREVIEW ONLY — shows live text feedback in UI
+                    // Final transcription is ALWAYS done by Whisper AI on the server
                     let text = "";
                     for (let i = 0; i < e.results.length; ++i) {
                         text += e.results[i][0].transcript;
                     }
                     liveRecognizedText = text.trim();
+                    // Show preview in VAD status area
+                    if (liveRecognizedText && isSpeechActive) {
+                        vadStatusText.textContent = `💬 Preview: "${liveRecognizedText.substring(0, 50)}${liveRecognizedText.length > 50 ? '...' : ''}"...`;
+                    }
                 };
                 liveSpeechRecognizer.onerror = () => {};
+                liveSpeechRecognizer.onend = () => {
+                    // Auto-restart if still streaming (browser kills it after ~60s)
+                    if (isLiveStreaming && liveSpeechRecognizer) {
+                        try { liveSpeechRecognizer.start(); } catch(e) {}
+                    }
+                };
                 liveSpeechRecognizer.start();
             } catch (srErr) {}
         }
@@ -845,9 +857,9 @@ function finalizeLiveChunk() {
     }
 
     const duration = Date.now() - speechStartTime;
-    const fastText = liveRecognizedText.trim();
+    const previewText = liveRecognizedText.trim();
 
-    if (duration < 500 && !fastText) {
+    if (duration < 500 && !previewText) {
         // Ignore tiny background noise / clicks without error
         updateLiveState("listening");
         if (liveMediaRecorder && liveMediaRecorder.state !== 'inactive') {
@@ -858,16 +870,13 @@ function finalizeLiveChunk() {
 
     updateLiveState("processing");
 
-    if (fastText && fastText.length > 1) {
-        // ULTRA-FAST PATH: Send pre-transcribed text directly to TTS!
-        liveRecognizedText = "";
-        processLiveTextDirect(fastText);
-    } else if (liveMediaRecorder && liveMediaRecorder.state !== 'inactive') {
-        // FALLBACK PATH: Upload audio chunk to server
+    // WHISPER-FIRST: Always send audio to server for accurate Whisper transcription
+    // Browser STT (previewText) is only used as visual preview, NEVER for TTS
+    if (liveMediaRecorder && liveMediaRecorder.state !== 'inactive') {
         liveMediaRecorder.onstop = async () => {
             if (liveAudioChunks.length > 0 && duration >= 500) {
                 const blob = new Blob(liveAudioChunks, { type: liveMediaRecorder.mimeType || 'audio/webm' });
-                await processLiveSentenceChunk(blob);
+                await processLiveSentenceChunk(blob, previewText);
             } else {
                 updateLiveState("listening");
             }
@@ -876,6 +885,9 @@ function finalizeLiveChunk() {
     } else {
         updateLiveState("listening");
     }
+
+    // Reset browser STT text for next phrase
+    liveRecognizedText = "";
 }
 
 // --- Helper to Replay Audio directly to Discord ---
@@ -1033,7 +1045,7 @@ async function processLiveTextDirect(text) {
     }
 }
 
-async function processLiveSentenceChunk(blob) {
+async function processLiveSentenceChunk(blob, previewText = "") {
     const timeStr = new Date().toLocaleTimeString();
     const currentVoiceObj = voices.find(v => v.id === appConfig.selected_voice) || { name: "Voz IA" };
     const emoji = getVoiceEmoji(currentVoiceObj.name);
@@ -1042,12 +1054,12 @@ async function processLiveSentenceChunk(blob) {
     feedItem.className = "feed-item";
     feedItem.innerHTML = `
         <div class="feed-main">
-            <div class="feed-text">⏳ Reconociendo audio...</div>
-            <div class="feed-voice-sub">${emoji} ${currentVoiceObj.name}</div>
+            <div class="feed-text">${previewText ? `🔄 Preview: "${previewText}"` : "⏳ Transcribiendo con Whisper AI..."}</div>
+            <div class="feed-voice-sub">${emoji} ${currentVoiceObj.name} • 🧠 Whisper AI</div>
         </div>
         <div class="feed-meta">
             <span class="feed-time">${timeStr}</span>
-            <span class="feed-tag">PROCESANDO</span>
+            <span class="feed-tag">🧠 WHISPER PROCESANDO...</span>
         </div>
     `;
 
