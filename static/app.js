@@ -1,3 +1,6 @@
+// Environment Detection
+const isLocalServer = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+
 // State
 let appConfig = null;
 let voices = [];
@@ -13,6 +16,8 @@ let isRecording = false;
 let isProcessing = false;
 let manualAudioChunks = [];
 let manualMediaRecorder = null;
+let manualSpeechRecognizer = null;
+let manualPttTranscript = "";
 
 // Continuous Live Mode State (VAD)
 let isLiveStreaming = false;
@@ -182,21 +187,23 @@ function showToast(message, isError = false) {
 
 // --- API Config & Devices ---
 async function loadAppConfig() {
-    try {
-        const res = await fetch("/api/config", { headers: getAuthHeaders(false) });
-        if (res.ok) {
-            const data = await res.json();
-            appConfig = data.config;
-        } else {
-            throw new Error("Modo cliente estático (GitHub Pages)");
-        }
-    } catch (e) {
+    if (isLocalServer) {
+        try {
+            const res = await fetch("/api/config", { headers: getAuthHeaders(false) });
+            if (res.ok) {
+                const data = await res.json();
+                appConfig = data.config;
+            }
+        } catch (e) {}
+    }
+
+    if (!appConfig) {
         // Standalone browser / GitHub Pages fallback
         appConfig = {
             api_key: localStorage.getItem("fish_api_key") || "sk-fish-MrvjytXetS4Gh8Yrlj7n380D3CvWK3T4McgK6WSk6Dc",
-            selected_voice: "a4e70883b9324211a5e91837a69c2b6f",
-            model: "s2.1-pro-free",
-            language: "es-CL",
+            selected_voice: localStorage.getItem("fish_selected_voice") || "a4e70883b9324211a5e91837a69c2b6f",
+            model: localStorage.getItem("fish_model") || "s2.1-pro-free",
+            language: localStorage.getItem("fish_language") || "es-CL",
             hear_myself: true
         };
     }
@@ -206,7 +213,7 @@ async function loadAppConfig() {
 
     if (appConfig.api_key) {
         apiStatusBadge.className = "status-badge online";
-        statusText.textContent = "API Lista (Conectado)";
+        statusText.textContent = isLocalServer ? "API y Servidor Listos" : "API Lista (Modo Web)";
     } else {
         apiStatusBadge.className = "status-badge error";
         statusText.textContent = "Sin API Key";
@@ -225,14 +232,16 @@ async function loadAudioDevices() {
         }
     } catch (mErr) {}
 
-    try {
-        const res = await fetch("/api/devices");
-        if (res.ok) {
-            audioDevices = await res.json();
-            backendInputs = audioDevices.inputs || [];
-            backendOutputs = audioDevices.outputs || [];
-        }
-    } catch (e) {}
+    if (isLocalServer) {
+        try {
+            const res = await fetch("/api/devices");
+            if (res.ok) {
+                audioDevices = await res.json();
+                backendInputs = audioDevices.inputs || [];
+                backendOutputs = audioDevices.outputs || [];
+            }
+        } catch (e) {}
+    }
 
     // 1. Populate Input Microphones
     if (selectInputDevice) {
@@ -320,30 +329,41 @@ async function updateAudioRouting() {
         selectedMicBrowserId = null;
     }
 
-    try {
-        await fetch("/api/config", {
-            method: "POST",
-            headers: getAuthHeaders(true),
-            body: JSON.stringify({
-                input_device: typeof inputDev === "number" ? inputDev : null,
-                output_device_primary: primary,
-                output_device_secondary: secondary,
-                hear_myself: hearMyself
-            })
-        });
-    } catch (e) {}
+    if (isLocalServer) {
+        try {
+            await fetch("/api/config", {
+                method: "POST",
+                headers: getAuthHeaders(true),
+                body: JSON.stringify({
+                    input_device: typeof inputDev === "number" ? inputDev : null,
+                    output_device_primary: primary,
+                    output_device_secondary: secondary,
+                    hear_myself: hearMyself
+                })
+            });
+        } catch (e) {}
+    }
 }
 
 async function loadVoices() {
-    try {
-        const res = await fetch("/api/voices", { headers: getAuthHeaders(false) });
-        if (res.ok) {
-            voices = await res.json();
-        } else {
-            throw new Error("Usando catálogo integrado");
-        }
-    } catch (e) {
-        voices = DEFAULT_VOICES_FALLBACK;
+    voices = DEFAULT_VOICES_FALLBACK;
+    if (isLocalServer) {
+        try {
+            const res = await fetch("/api/voices", { headers: getAuthHeaders(false) });
+            if (res.ok) {
+                const backendVoices = await res.json();
+                if (backendVoices && backendVoices.length > 0) {
+                    voices = backendVoices;
+                }
+            }
+        } catch (e) {}
+    } else {
+        try {
+            const customSaved = JSON.parse(localStorage.getItem("custom_voices_web") || "[]");
+            if (customSaved && customSaved.length > 0) {
+                voices = [...customSaved, ...DEFAULT_VOICES_FALLBACK.filter(v => !customSaved.some(c => c.id === v.id))];
+            }
+        } catch (e) {}
     }
     renderVoiceList();
 }
@@ -425,14 +445,19 @@ async function selectVoice(voice) {
     activeVoiceName.textContent = `${emoji} ${voice.name}`;
     activeVoiceDesc.textContent = voice.description || "Voz activa para transmisión";
     activeVoiceId.textContent = voice.id;
-    appConfig.selected_voice = voice.id;
+    if (appConfig) appConfig.selected_voice = voice.id;
+    localStorage.setItem("fish_selected_voice", voice.id);
     voiceDropdownSelect.value = voice.id;
     
-    await fetch("/api/config", {
-        method: "POST",
-        headers: getAuthHeaders(true),
-        body: JSON.stringify({ selected_voice: voice.id })
-    });
+    if (isLocalServer) {
+        try {
+            await fetch("/api/config", {
+                method: "POST",
+                headers: getAuthHeaders(true),
+                body: JSON.stringify({ selected_voice: voice.id })
+            });
+        } catch (e) {}
+    }
     
     renderVoiceList();
     showToast(`Voz activada: ${voice.name}`);
@@ -756,28 +781,37 @@ async function processLiveTextDirect(text) {
     liveSentencesFeed.prepend(feedItem);
 
     try {
-        const res = await fetch("/api/tts", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-                text: text,
-                reference_id: appConfig.selected_voice,
-                model: appConfig.model || "s2.1-pro-free",
-                play_now: true
-            })
-        });
+        let audioBlob;
+        if (isLocalServer) {
+            try {
+                const res = await fetch("/api/tts", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        text: text,
+                        reference_id: appConfig.selected_voice,
+                        model: appConfig.model || "s2.1-pro-free",
+                        play_now: true
+                    })
+                });
 
-        if (res.status === 402) {
-            creditAlertBanner.classList.remove("hidden");
-            throw new Error("Créditos de desarrollador insuficientes (Error 402).");
+                if (res.status === 402) {
+                    creditAlertBanner.classList.remove("hidden");
+                    throw new Error("Créditos de desarrollador insuficientes (Error 402).");
+                }
+
+                if (res.ok) {
+                    audioBlob = await res.blob();
+                } else {
+                    audioBlob = await callFishAudioDirect(text);
+                }
+            } catch (err) {
+                if (err.message.includes("402")) throw err;
+                audioBlob = await callFishAudioDirect(text);
+            }
+        } else {
+            audioBlob = await callFishAudioDirect(text);
         }
-
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({ detail: "Error" }));
-            throw new Error(err.detail || "Error en el servidor");
-        }
-
-        const audioBlob = await res.blob();
         
         // Convert Blob to Base64 for instant replaying
         const reader = new FileReader();
@@ -849,56 +883,63 @@ async function processLiveSentenceChunk(blob) {
     liveSentencesFeed.prepend(feedItem);
 
     try {
-        const formData = new FormData();
-        formData.append("file", blob, "chunk.webm");
-        if (appConfig && appConfig.selected_voice) {
-            formData.append("reference_id", appConfig.selected_voice);
-        }
+        if (isLocalServer) {
+            const formData = new FormData();
+            formData.append("file", blob, "chunk.webm");
+            if (appConfig && appConfig.selected_voice) {
+                formData.append("reference_id", appConfig.selected_voice);
+            }
 
-        const res = await fetch("/api/voice-convert", {
-            method: "POST",
-            body: formData
-        });
+            const res = await fetch("/api/voice-convert", {
+                method: "POST",
+                body: formData
+            });
 
-        if (res.status === 402) {
-            creditAlertBanner.classList.remove("hidden");
-            throw new Error("Créditos de API de desarrollador insuficientes (Error 402).");
-        }
+            if (res.status === 402) {
+                creditAlertBanner.classList.remove("hidden");
+                throw new Error("Créditos de API de desarrollador insuficientes (Error 402).");
+            }
 
-        if (!res.ok) {
-            const err = await res.json().catch(() => ({ detail: "Error" }));
-            throw new Error(err.detail || "Error en el servidor");
-        }
+            if (!res.ok) {
+                const err = await res.json().catch(() => ({ detail: "Error" }));
+                throw new Error(err.detail || "Error en el servidor");
+            }
 
-        const data = await res.json();
-        const base64Audio = data.audio_base64;
-        const text = data.transcription;
+            const data = await res.json();
+            const base64Audio = data.audio_base64;
+            const text = data.transcription;
 
-        feedItem.classList.add("playing");
-        feedItem.innerHTML = `
-            <div class="feed-main">
-                <div class="feed-text">"${text}"</div>
-                <div class="feed-voice-sub">${emoji} ${currentVoiceObj.name}</div>
-            </div>
-            <div class="feed-meta">
-                <span class="feed-time">${timeStr}</span>
-                <button class="btn-listen-local" title="Escuchar en tus auriculares" onclick="playLocally('${base64Audio}')">▶️</button>
-                <button class="btn-replay-discord" title="Volver a transmitir a Discord">
-                    <span>🔁</span> Re-transmitir a Discord
-                </button>
-                <span class="feed-tag done">✓ EMITIDO</span>
-            </div>
-        `;
+            feedItem.classList.add("playing");
+            feedItem.innerHTML = `
+                <div class="feed-main">
+                    <div class="feed-text">"${text}"</div>
+                    <div class="feed-voice-sub">${emoji} ${currentVoiceObj.name}</div>
+                </div>
+                <div class="feed-meta">
+                    <span class="feed-time">${timeStr}</span>
+                    <button class="btn-listen-local" title="Escuchar en tus auriculares" onclick="playLocally('${base64Audio}')">▶️</button>
+                    <button class="btn-replay-discord" title="Volver a transmitir a Discord">
+                        <span>🔁</span> Re-transmitir a Discord
+                    </button>
+                    <span class="feed-tag done">✓ EMITIDO</span>
+                </div>
+            `;
 
-        feedItem.querySelector(".btn-replay-discord").onclick = () => {
-            replayToDiscord(base64Audio, feedItem, text);
-        };
+            feedItem.querySelector(".btn-replay-discord").onclick = () => {
+                replayToDiscord(base64Audio, feedItem, text);
+            };
 
-        setTimeout(() => feedItem.classList.remove("playing"), 2000);
+            setTimeout(() => feedItem.classList.remove("playing"), 2000);
 
-        if (checkHearMyself.checked) {
-            audioPlayer.src = base64Audio;
-            audioPlayer.play().catch(() => {});
+            if (checkHearMyself.checked) {
+                audioPlayer.src = base64Audio;
+                audioPlayer.play().catch(() => {});
+            }
+        } else {
+            // Web Client fallback for continuous mode
+            const textToSay = liveRecognizedText || "Frase detectada por voz";
+            await processLiveTextDirect(textToSay);
+            feedItem.remove();
         }
 
     } catch (e) {
@@ -919,6 +960,7 @@ async function startSpeaking() {
     if (isRecording || isProcessing || isLiveStreaming) return;
     isRecording = true;
     manualAudioChunks = [];
+    manualPttTranscript = "";
     
     btnPtt.classList.add("active-recording");
     recordingBadge.classList.remove("hidden");
@@ -948,6 +990,29 @@ async function startSpeaking() {
         analyser.fftSize = 256;
         source.connect(analyser);
         startVisualizerLoop();
+
+        // Setup Speech Recognition for instant client STT
+        const SpeechRecognition = window.SpeechRecognition || window.webkitSpeechRecognition;
+        if (SpeechRecognition) {
+            try {
+                manualSpeechRecognizer = new SpeechRecognition();
+                manualSpeechRecognizer.continuous = true;
+                manualSpeechRecognizer.interimResults = true;
+                manualSpeechRecognizer.lang = (appConfig && appConfig.language) || "es-CL";
+                manualSpeechRecognizer.onresult = (e) => {
+                    let text = "";
+                    for (let i = 0; i < e.results.length; ++i) {
+                        text += e.results[i][0].transcript;
+                    }
+                    manualPttTranscript = text.trim();
+                    if (manualPttTranscript) {
+                        transcriptionText.textContent = `"${manualPttTranscript}"`;
+                    }
+                };
+                manualSpeechRecognizer.onerror = () => {};
+                manualSpeechRecognizer.start();
+            } catch (srErr) {}
+        }
 
         // Setup MediaRecorder
         let mimeType = 'audio/webm';
@@ -980,6 +1045,11 @@ async function stopSpeaking() {
     btnPtt.classList.remove("active-recording");
     recordingBadge.classList.add("hidden");
 
+    if (manualSpeechRecognizer) {
+        try { manualSpeechRecognizer.stop(); } catch (e) {}
+        manualSpeechRecognizer = null;
+    }
+
     if (manualMediaRecorder && manualMediaRecorder.state !== 'inactive') {
         manualMediaRecorder.stop();
     }
@@ -991,7 +1061,7 @@ async function stopSpeaking() {
 }
 
 async function sendVoiceToConvert(audioBlob) {
-    if (audioBlob.size < 1000) {
+    if (audioBlob.size < 1000 && !manualPttTranscript) {
         transcriptionStatus.textContent = "Listo";
         transcriptionText.textContent = "Grabación muy corta. Mantén presionado mientras hablas.";
         startIdleVisualizer();
@@ -1004,36 +1074,43 @@ async function sendVoiceToConvert(audioBlob) {
     transcriptionText.textContent = "Procesando con IA...";
 
     try {
-        const formData = new FormData();
-        formData.append("file", audioBlob, "voice.webm");
-        if (appConfig && appConfig.selected_voice) {
-            formData.append("reference_id", appConfig.selected_voice);
+        if (isLocalServer) {
+            const formData = new FormData();
+            formData.append("file", audioBlob, "voice.webm");
+            if (appConfig && appConfig.selected_voice) {
+                formData.append("reference_id", appConfig.selected_voice);
+            }
+
+            const res = await fetch("/api/voice-convert", {
+                method: "POST",
+                body: formData
+            });
+
+            if (res.status === 402) {
+                creditAlertBanner.classList.remove("hidden");
+                throw new Error("Créditos insuficientes en tu cuenta de desarrollador de Fish Audio (Error 402). Recarga en fish.audio/app/developers");
+            }
+
+            if (!res.ok) {
+                const errJson = await res.json().catch(() => ({ detail: "Error en el servidor" }));
+                throw new Error(errJson.detail || `Error HTTP ${res.status}`);
+            }
+
+            const data = await res.json();
+            transcriptionText.textContent = `"${data.transcription}"`;
+            transcriptionStatus.textContent = "✓ Clonado con Éxito";
+
+            latestAudioCard.classList.remove("hidden");
+            audioPlayer.src = data.audio_base64;
+            audioPlayer.play();
+
+            showToast("¡Voz clonada y transmitida con éxito!");
+        } else {
+            // Standalone Web Mode (GitHub Pages)
+            const textToSay = manualPttTranscript || "¡Hola! Probando voz clonada con inteligencia artificial.";
+            transcriptionText.textContent = `"${textToSay}"`;
+            await sendToFishAudio(textToSay);
         }
-
-        const res = await fetch("/api/voice-convert", {
-            method: "POST",
-            body: formData
-        });
-
-        if (res.status === 402) {
-            creditAlertBanner.classList.remove("hidden");
-            throw new Error("Créditos insuficientes en tu cuenta de desarrollador de Fish Audio (Error 402). Recarga en fish.audio/app/developers");
-        }
-
-        if (!res.ok) {
-            const errJson = await res.json().catch(() => ({ detail: "Error en el servidor" }));
-            throw new Error(errJson.detail || `Error HTTP ${res.status}`);
-        }
-
-        const data = await res.json();
-        transcriptionText.textContent = `"${data.transcription}"`;
-        transcriptionStatus.textContent = "✓ Clonado con Éxito";
-
-        latestAudioCard.classList.remove("hidden");
-        audioPlayer.src = data.audio_base64;
-        audioPlayer.play();
-
-        showToast("¡Voz clonada y transmitida con éxito!");
 
     } catch (err) {
         transcriptionStatus.textContent = "❌ Error";
@@ -1056,56 +1133,35 @@ async function sendToFishAudio(text) {
 
     try {
         let audioBlob;
-        try {
-            const res = await fetch("/api/tts", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                    text: text,
-                    reference_id: appConfig.selected_voice,
-                    model: appConfig.model || "s2.1-pro-free",
-                    play_now: true
-                })
-            });
+        if (isLocalServer) {
+            try {
+                const res = await fetch("/api/tts", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        text: text,
+                        reference_id: appConfig.selected_voice,
+                        model: appConfig.model || "s2.1-pro-free",
+                        play_now: true
+                    })
+                });
 
-            if (res.status === 402) {
-                creditAlertBanner.classList.remove("hidden");
-                throw new Error("Créditos insuficientes en tu cuenta de desarrollador de Fish Audio (Error 402). Recarga en fish.audio/app/developers");
+                if (res.status === 402) {
+                    creditAlertBanner.classList.remove("hidden");
+                    throw new Error("Créditos insuficientes en tu cuenta de desarrollador de Fish Audio (Error 402). Recarga en fish.audio/app/developers");
+                }
+
+                if (res.ok) {
+                    audioBlob = await res.blob();
+                } else {
+                    throw new Error("Fallback directo");
+                }
+            } catch (serverErr) {
+                if (serverErr.message.includes("402")) throw serverErr;
+                audioBlob = await callFishAudioDirect(text);
             }
-
-            if (res.ok) {
-                audioBlob = await res.blob();
-            } else {
-                throw new Error("Fallback directo");
-            }
-        } catch (serverErr) {
-            // Direct browser client call to Fish Audio API (for GitHub Pages / mobile)
-            const apiKey = (appConfig && appConfig.api_key) || "sk-fish-MrvjytXetS4Gh8Yrlj7n380D3CvWK3T4McgK6WSk6Dc";
-            const directRes = await fetch("https://api.fish.audio/v1/tts", {
-                method: "POST",
-                headers: {
-                    "Authorization": `Bearer ${apiKey}`,
-                    "Content-Type": "application/json",
-                    "model": (appConfig && appConfig.model) || "s2.1-pro-free"
-                },
-                body: JSON.stringify({
-                    text: text,
-                    reference_id: (appConfig && appConfig.selected_voice) || "97582f301e1c4f93a514ceda15e23e26",
-                    format: "mp3",
-                    latency: "balanced"
-                })
-            });
-
-            if (directRes.status === 402) {
-                creditAlertBanner.classList.remove("hidden");
-                throw new Error("Créditos insuficientes en Fish Audio API (Error 402).");
-            }
-
-            if (!directRes.ok) {
-                throw new Error(`Error en Fish Audio API: HTTP ${directRes.status}`);
-            }
-
-            audioBlob = await directRes.blob();
+        } else {
+            audioBlob = await callFishAudioDirect(text);
         }
 
         const audioUrl = URL.createObjectURL(audioBlob);
@@ -1124,6 +1180,35 @@ async function sendToFishAudio(text) {
         processingBadge.classList.add("hidden");
         startIdleVisualizer();
     }
+}
+
+async function callFishAudioDirect(text) {
+    const apiKey = (appConfig && appConfig.api_key) || localStorage.getItem("fish_api_key") || "sk-fish-MrvjytXetS4Gh8Yrlj7n380D3CvWK3T4McgK6WSk6Dc";
+    const directRes = await fetch("https://api.fish.audio/v1/tts", {
+        method: "POST",
+        headers: {
+            "Authorization": `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+            "model": (appConfig && appConfig.model) || "s2.1-pro-free"
+        },
+        body: JSON.stringify({
+            text: text,
+            reference_id: (appConfig && appConfig.selected_voice) || "97582f301e1c4f93a514ceda15e23e26",
+            format: "mp3",
+            latency: "balanced"
+        })
+    });
+
+    if (directRes.status === 402) {
+        creditAlertBanner.classList.remove("hidden");
+        throw new Error("Créditos insuficientes en Fish Audio API (Error 402). Recarga créditos de desarrollador en https://fish.audio/app/developers");
+    }
+
+    if (!directRes.ok) {
+        throw new Error(`Error en Fish Audio API: HTTP ${directRes.status}`);
+    }
+
+    return await directRes.blob();
 }
 
 // --- Visualizer Animation ---
@@ -1308,15 +1393,23 @@ async function saveSettings() {
     const model = settingModel.value;
     const lang = settingLang.value;
 
-    await fetch("/api/config", {
-        method: "POST",
-        headers: getAuthHeaders(true),
-        body: JSON.stringify({
-            api_key: key,
-            model: model,
-            language: lang
-        })
-    });
+    localStorage.setItem("fish_api_key", key);
+    localStorage.setItem("fish_model", model);
+    localStorage.setItem("fish_language", lang);
+
+    if (isLocalServer) {
+        try {
+            await fetch("/api/config", {
+                method: "POST",
+                headers: getAuthHeaders(true),
+                body: JSON.stringify({
+                    api_key: key,
+                    model: model,
+                    language: lang
+                })
+            });
+        } catch (e) {}
+    }
 
     closeSettingsModal();
     await loadAppConfig();
@@ -1344,15 +1437,25 @@ async function saveNewVoice() {
         return;
     }
 
-    await fetch("/api/voices", {
-        method: "POST",
-        headers: getAuthHeaders(true),
-        body: JSON.stringify({
-            id: id,
-            name: name,
-            description: desc
-        })
-    });
+    if (isLocalServer) {
+        try {
+            await fetch("/api/voices", {
+                method: "POST",
+                headers: getAuthHeaders(true),
+                body: JSON.stringify({
+                    id: id,
+                    name: name,
+                    description: desc
+                })
+            });
+        } catch (e) {}
+    } else {
+        try {
+            const customSaved = JSON.parse(localStorage.getItem("custom_voices_web") || "[]");
+            customSaved.unshift({ id, name, description: desc, sample_text: "" });
+            localStorage.setItem("custom_voices_web", JSON.stringify(customSaved));
+        } catch (e) {}
+    }
 
     closeNewVoiceModal();
     await loadVoices();
@@ -1385,25 +1488,36 @@ async function checkAuthStatus() {
         return;
     }
 
-    try {
-        const res = await fetch("/api/auth/me", {
-            headers: getAuthHeaders(false)
-        });
+    if (isLocalServer) {
+        try {
+            const res = await fetch("/api/auth/me", {
+                headers: getAuthHeaders(false)
+            });
 
-        if (res.ok) {
-            const data = await res.json();
-            currentUser = data.user;
-            updateAuthUI();
-        } else {
-            // Token expired or invalid
-            authToken = null;
-            currentUser = null;
-            localStorage.removeItem("voice_clone_auth_token");
-            updateAuthUI();
-        }
-    } catch (e) {
-        console.warn("Error checking auth status:", e);
+            if (res.ok) {
+                const data = await res.json();
+                currentUser = data.user;
+                updateAuthUI();
+                return;
+            } else {
+                // Token expired or invalid
+                authToken = null;
+                currentUser = null;
+                localStorage.removeItem("voice_clone_auth_token");
+                updateAuthUI();
+                return;
+            }
+        } catch (e) {}
     }
+
+    // In Web Mode, read stored user
+    try {
+        const storedUser = JSON.parse(localStorage.getItem("voice_clone_current_user") || "null");
+        currentUser = storedUser;
+    } catch (e) {
+        currentUser = null;
+    }
+    updateAuthUI();
 }
 
 function updateAuthUI() {
@@ -1468,6 +1582,18 @@ async function submitAuth() {
     btnSubmitAuthText.textContent = "Procesando...";
 
     try {
+        if (!isLocalServer) {
+            // Web Client Mode Login/Register simulation
+            currentUser = { username: username, email: email || "" };
+            authToken = "web-token-" + btoa(username);
+            localStorage.setItem("voice_clone_auth_token", authToken);
+            localStorage.setItem("voice_clone_current_user", JSON.stringify(currentUser));
+            updateAuthUI();
+            closeAuthModal();
+            showToast(`¡Sesión iniciada como ${username}!`);
+            return;
+        }
+
         const endpoint = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
         const payload = authMode === "login" 
             ? { username, password } 
@@ -1520,10 +1646,13 @@ async function logoutUser() {
     authToken = null;
     currentUser = null;
     localStorage.removeItem("voice_clone_auth_token");
+    localStorage.removeItem("voice_clone_current_user");
 
-    try {
-        await fetch("/api/auth/logout", { method: "POST" });
-    } catch (e) {}
+    if (isLocalServer) {
+        try {
+            await fetch("/api/auth/logout", { method: "POST" });
+        } catch (e) {}
+    }
 
     updateAuthUI();
     await loadAppConfig();

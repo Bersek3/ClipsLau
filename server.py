@@ -82,6 +82,10 @@ def get_current_user(authorization: Optional[str] = Header(None)) -> Optional[di
         return None
     return db.get_user_by_id(payload.get("user_id"))
 
+@app.get("/favicon.ico", include_in_schema=False)
+async def favicon():
+    return Response(content=b"", media_type="image/x-icon")
+
 # =========================================================================
 # 🔐 AUTHENTICATION ENDPOINTS (MONGODB)
 # =========================================================================
