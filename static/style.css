@@ -1786,3 +1786,39 @@ textarea:focus {
 .mt-2 {
     margin-top: 8px;
 }
+
+/* Responsive Mobile Layout */
+@media (max-width: 900px) {
+    body {
+        height: auto;
+        min-height: 100vh;
+        overflow-y: auto;
+    }
+    .app-container {
+        height: auto;
+        min-height: 100vh;
+        padding: 16px 12px;
+    }
+    .main-grid {
+        grid-template-columns: 1fr;
+        display: flex;
+        flex-direction: column;
+    }
+    .panel {
+        overflow: visible;
+    }
+    .tab-content.active {
+        overflow-y: visible;
+    }
+    .top-nav {
+        flex-direction: column;
+        gap: 12px;
+        padding: 12px;
+        text-align: center;
+    }
+    .nav-actions {
+        width: 100%;
+        justify-content: center;
+        flex-wrap: wrap;
+    }
+}
