@@ -548,7 +548,7 @@ async def voice_convert_audio(
 app.mount("/", StaticFiles(directory=STATIC_DIR, html=True), name="static")
 
 if __name__ == "__main__":
-    port = 7860
+    port = 7861
     # Clean up stale processes on port 7860 on Windows if present
     try:
         import subprocess
