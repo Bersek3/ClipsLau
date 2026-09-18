@@ -95,6 +95,10 @@
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
                         Texto a Voz con Emociones
                     </button>
+                    <button class="tab-btn" data-tab="tab-devices">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/><circle cx="12" cy="12" r="1"/></svg>
+                        🎙️ Selector de Micrófono & Audio
+                    </button>
                     <button class="tab-btn" data-tab="tab-guide">
                         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
                         Guía Discord / Juegos
@@ -276,6 +280,116 @@
                         </div>
                     </div>
                 </div>
+
+                <!-- Tab 4: Comprehensive Audio Input & Output Devices Control Center -->
+                <div id="tab-devices" class="tab-content">
+                    <div class="devices-hub">
+                        <!-- Top Banner / Control Bar -->
+                        <div class="device-hero-card">
+                            <div class="device-hero-info">
+                                <div class="device-hero-title">
+                                    <span class="device-icon-badge">🎙️</span>
+                                    <div>
+                                        <h3>Selector de Micrófonos y Dispositivos de Audio</h3>
+                                        <p>Elige qué micrófono capturará tu voz y gestiona tus salidas a auriculares y cables virtuales de Discord.</p>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="device-hero-actions">
+                                <button id="btnRefreshDevicesTab" class="btn btn-outline">
+                                    <span>🔄</span> Actualizar Dispositivos
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Main Input Mic Selector & Live Audio Test Card -->
+                        <div class="device-main-card">
+                            <div class="section-subtitle space-between">
+                                <span>🎙️ 1. SELECCIONAR MICRÓFONO DE ENTRADA ACTIVO</span>
+                                <span id="micSelectedBadge" class="status-pill online">Micrófono Activo</span>
+                            </div>
+                            
+                            <div class="form-group" style="margin-top: 14px;">
+                                <label class="form-label" style="font-size: 14px; font-weight: 600;">Elegir Micrófono para Captura de Voz:</label>
+                                <select id="selectInputDeviceTab" class="form-select select-mic-large">
+                                    <option value="">Cargando micrófonos disponibles...</option>
+                                </select>
+                            </div>
+
+                            <!-- Live Microphone VU Meter & Test Canvas -->
+                            <div class="mic-test-panel">
+                                <div class="mic-test-header">
+                                    <div class="mic-test-title">
+                                        <strong>📊 Prueba de Micrófono en Tiempo Real:</strong>
+                                        <span id="micTestStatus" class="status-pill idle">En reposo</span>
+                                    </div>
+                                    <button id="btnToggleMicTest" class="btn btn-sm btn-primary">
+                                        <span id="btnToggleMicTestIcon">▶️</span>
+                                        <span id="btnToggleMicTestText">Probar Micrófono</span>
+                                    </button>
+                                </div>
+
+                                <!-- Dynamic VU Meter Bar -->
+                                <div class="vu-meter-wrapper">
+                                    <div class="vu-meter-scale">
+                                        <span>Silencio</span>
+                                        <span>Bajo</span>
+                                        <span>Óptimo</span>
+                                        <span>Alto / Saturación</span>
+                                    </div>
+                                    <div class="vu-meter-bar-bg">
+                                        <div id="micTestVuFill" class="vu-meter-fill" style="width: 0%;"></div>
+                                        <div class="vu-meter-marker-optimal" style="left: 60%;" title="Nivel Óptimo Recomendado"></div>
+                                    </div>
+                                </div>
+
+                                <!-- Canvas Waveform -->
+                                <canvas id="micTestCanvas" class="mic-test-canvas" width="600" height="70"></canvas>
+                                <div class="mic-test-hint">💡 Habla por tu micrófono mientras la prueba esté activa para verificar que la barra se mueva y que capture tu voz correctamente.</div>
+                            </div>
+                        </div>
+
+                        <!-- Output Devices Routing Card -->
+                        <div class="device-main-card">
+                            <div class="section-subtitle">
+                                <span>🎧 2. ENRUTAMIENTO DE SALIDAS (AURICULARES Y DISCORD)</span>
+                            </div>
+
+                            <div class="routing-grid-two">
+                                <div class="routing-box">
+                                    <label class="form-label">🎧 Para escucharte a ti mismo (Auriculares/Parlantes):</label>
+                                    <select id="selectPrimaryOutputTab" class="form-select">
+                                        <option value="">Cargando salidas...</option>
+                                    </select>
+                                    <button id="btnTestPrimarySound" class="btn btn-sm btn-outline mt-2">
+                                        <span>🔊</span> Probar Tono en Auriculares
+                                    </button>
+                                </div>
+
+                                <div class="routing-box">
+                                    <label class="form-label">⭐ Para transmitir a Discord / Juegos (VB-Cable):</label>
+                                    <select id="selectSecondaryOutputTab" class="form-select">
+                                        <option value="">Cargando salidas...</option>
+                                    </select>
+                                    <button id="btnTestSecondarySound" class="btn btn-sm btn-outline mt-2">
+                                        <span>🔊</span> Probar Tono en Cable Discord
+                                    </button>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Detected Microphones List Grid -->
+                        <div class="device-main-card">
+                            <div class="section-subtitle space-between">
+                                <span>📋 3. TODOS LOS MICRÓFONOS DETECTADOS EN TU SISTEMA</span>
+                                <span id="totalMicsBadge" class="status-pill idle">0 detectados</span>
+                            </div>
+                            <div id="detectedMicsList" class="detected-mics-grid">
+                                <!-- Populated dynamically -->
+                            </div>
+                        </div>
+                    </div>
+                </div>
             </section>
 
             <!-- Right Column: Voice Selection & Audio Routing -->
@@ -318,9 +432,12 @@
 
                 <!-- Audio Output Routing -->
                 <div class="side-section">
-                    <div class="section-title">
-                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
-                        <span>Enrutamiento de Micrófonos y Salidas</span>
+                    <div class="section-title space-between">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                            <span>Entradas y Salidas de Audio</span>
+                        </div>
+                        <button id="btnRefreshDevicesSide" class="btn btn-xs btn-outline" title="Actualizar lista de micrófonos">🔄</button>
                     </div>
 
                     <div class="form-group">

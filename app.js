@@ -72,6 +72,30 @@ const toast = document.getElementById("toast");
 let browserAudioInputs = [];
 let selectedMicBrowserId = null;
 
+// Audio Device Tab DOM Elements
+const selectInputDeviceTab = document.getElementById("selectInputDeviceTab");
+const selectPrimaryOutputTab = document.getElementById("selectPrimaryOutputTab");
+const selectSecondaryOutputTab = document.getElementById("selectSecondaryOutputTab");
+const btnRefreshDevicesTab = document.getElementById("btnRefreshDevicesTab");
+const btnRefreshDevicesSide = document.getElementById("btnRefreshDevicesSide");
+const btnToggleMicTest = document.getElementById("btnToggleMicTest");
+const btnToggleMicTestIcon = document.getElementById("btnToggleMicTestIcon");
+const btnToggleMicTestText = document.getElementById("btnToggleMicTestText");
+const micTestStatus = document.getElementById("micTestStatus");
+const micTestVuFill = document.getElementById("micTestVuFill");
+const micTestCanvas = document.getElementById("micTestCanvas");
+const btnTestPrimarySound = document.getElementById("btnTestPrimarySound");
+const btnTestSecondarySound = document.getElementById("btnTestSecondarySound");
+const detectedMicsList = document.getElementById("detectedMicsList");
+const totalMicsBadge = document.getElementById("totalMicsBadge");
+const micSelectedBadge = document.getElementById("micSelectedBadge");
+
+let isMicTesting = false;
+let micTestStream = null;
+let micTestAudioCtx = null;
+let micTestAnalyser = null;
+let micTestAnimFrame = null;
+
 // Continuous Live DOM Elements
 const btnToggleLive = document.getElementById("btnToggleLive");
 const btnToggleLiveText = document.getElementById("btnToggleLiveText");
@@ -243,82 +267,166 @@ async function loadAudioDevices() {
         } catch (e) {}
     }
 
-    // 1. Populate Input Microphones
-    if (selectInputDevice) {
-        selectInputDevice.innerHTML = `<option value="">-- Micrófono Predeterminado del Sistema --</option>`;
-        if (backendInputs.length > 0) {
-            backendInputs.forEach(dev => {
-                const optInput = document.createElement("option");
-                optInput.value = dev.id;
-                optInput.textContent = dev.name;
-                if (appConfig && appConfig.input_device === dev.id) optInput.selected = true;
-                selectInputDevice.appendChild(optInput);
-            });
-        } else if (browserAudioInputs.length > 0) {
-            browserAudioInputs.forEach((dev, idx) => {
-                const optInput = document.createElement("option");
-                optInput.value = dev.deviceId;
-                optInput.textContent = `🎙️ ${dev.label || `Micrófono ${idx + 1}`}`;
-                selectInputDevice.appendChild(optInput);
-            });
-        }
-    }
+    const allInputs = backendInputs.length > 0 ? backendInputs : browserAudioInputs.map((d, i) => ({
+        id: d.deviceId,
+        name: `🎙️ ${d.label || `Micrófono ${i + 1}`}`,
+        api: "Web Browser",
+        channels: 2,
+        is_default: i === 0,
+        is_virtual: false
+    }));
 
-    // 2. Populate Output Devices (Headphones & Discord Virtual Cable)
-    selectPrimaryOutput.innerHTML = `<option value="">-- Dispositivo Predeterminado de Windows --</option>`;
-    selectSecondaryOutput.innerHTML = `<option value="">-- Ninguno / Desactivado --</option>`;
+    // 1. Populate Input Microphones (Both Sidebar and Dedicated Tab)
+    const populateInputSelect = (selectElem) => {
+        if (!selectElem) return;
+        selectElem.innerHTML = `<option value="">-- Micrófono Predeterminado del Sistema --</option>`;
+        allInputs.forEach(dev => {
+            const opt = document.createElement("option");
+            opt.value = dev.id;
+            opt.textContent = dev.name;
+            if (appConfig && appConfig.input_device === dev.id) opt.selected = true;
+            selectElem.appendChild(opt);
+        });
+    };
 
-    if (backendOutputs.length > 0) {
-        backendOutputs.forEach(dev => {
-            const isCable = dev.is_virtual || dev.name.toLowerCase().includes("cable") || dev.name.toLowerCase().includes("voicemeeter");
+    populateInputSelect(selectInputDevice);
+    populateInputSelect(selectInputDeviceTab);
+
+    // 2. Populate Output Devices (Both Sidebar and Dedicated Tab)
+    const populateOutputs = (selectPrim, selectSec) => {
+        if (!selectPrim || !selectSec) return;
+        selectPrim.innerHTML = `<option value="">-- Dispositivo Predeterminado de Windows --</option>`;
+        selectSec.innerHTML = `<option value="">-- Ninguno / Desactivado --</option>`;
+
+        if (backendOutputs.length > 0) {
+            backendOutputs.forEach(dev => {
+                const isCable = dev.is_virtual || dev.name.toLowerCase().includes("cable") || dev.name.toLowerCase().includes("voicemeeter");
+                const optPrimary = document.createElement("option");
+                optPrimary.value = dev.id;
+                optPrimary.textContent = dev.name;
+                if (appConfig && appConfig.output_device_primary === dev.id) optPrimary.selected = true;
+                selectPrim.appendChild(optPrimary);
+
+                const optSecondary = document.createElement("option");
+                optSecondary.value = dev.id;
+                optSecondary.textContent = (isCable ? "⭐ [Recomendado Discord] " : "") + dev.name;
+                if (appConfig && appConfig.output_device_secondary === dev.id) {
+                    optSecondary.selected = true;
+                } else if (!appConfig.output_device_secondary && isCable && dev.name.toLowerCase().includes("cable input")) {
+                    optSecondary.selected = true;
+                    updateAudioRouting();
+                }
+                selectSec.appendChild(optSecondary);
+            });
+        } else {
             const optPrimary = document.createElement("option");
-            optPrimary.value = dev.id;
-            optPrimary.textContent = dev.name;
-            if (appConfig && appConfig.output_device_primary === dev.id) optPrimary.selected = true;
-            selectPrimaryOutput.appendChild(optPrimary);
+            optPrimary.value = "";
+            optPrimary.textContent = "🎧 Altavoces / Auriculares del Navegador";
+            selectPrim.appendChild(optPrimary);
 
             const optSecondary = document.createElement("option");
-            optSecondary.value = dev.id;
-            optSecondary.textContent = (isCable ? "⭐ [Recomendado Discord] " : "") + dev.name;
-            if (appConfig && appConfig.output_device_secondary === dev.id) {
-                optSecondary.selected = true;
-            } else if (!appConfig.output_device_secondary && isCable && dev.name.toLowerCase().includes("cable input")) {
-                optSecondary.selected = true;
-                updateAudioRouting();
-            }
-            selectSecondaryOutput.appendChild(optSecondary);
-        });
-    } else {
-        const optPrimary = document.createElement("option");
-        optPrimary.value = "";
-        optPrimary.textContent = "🎧 Altavoces / Auriculares del Navegador";
-        selectPrimaryOutput.appendChild(optPrimary);
+            optSecondary.value = "";
+            optSecondary.textContent = "⭐ Discord Virtual Cable (Inicia el servidor local para activar)";
+            selectSec.appendChild(optSecondary);
+        }
+    };
 
-        const optSecondary = document.createElement("option");
-        optSecondary.value = "";
-        optSecondary.textContent = "⭐ Discord Virtual Cable (Inicia el servidor local para activar)";
-        selectSecondaryOutput.appendChild(optSecondary);
+    populateOutputs(selectPrimaryOutput, selectSecondaryOutput);
+    populateOutputs(selectPrimaryOutputTab, selectSecondaryOutputTab);
+
+    // 3. Populate Detected Microphones Grid Card List
+    renderDetectedMicsGrid(allInputs);
+}
+
+function renderDetectedMicsGrid(inputsList) {
+    if (totalMicsBadge) totalMicsBadge.textContent = `${inputsList.length} micrófonos detectados`;
+    if (!detectedMicsList) return;
+
+    detectedMicsList.innerHTML = "";
+    if (inputsList.length === 0) {
+        detectedMicsList.innerHTML = `<div style="color:var(--text-muted); font-size:13px; grid-column:1/-1;">No se detectaron micrófonos adicionales. Conecta tu micrófono o recarga la página.</div>`;
+        return;
+    }
+
+    inputsList.forEach(dev => {
+        const isCurrentSelected = (appConfig && appConfig.input_device === dev.id) || 
+            (selectInputDevice && selectInputDevice.value == dev.id);
+
+        const card = document.createElement("div");
+        card.className = `mic-card-item ${isCurrentSelected ? "selected" : ""}`;
+        card.innerHTML = `
+            <div>
+                <div class="mic-card-header">
+                    <span class="mic-card-icon">${dev.is_virtual ? "⭐" : "🎙️"}</span>
+                    <div>
+                        <div class="mic-card-name">${dev.name}</div>
+                        <div class="mic-card-meta">
+                            <span class="mic-card-badge">${dev.api || "Driver"}</span>
+                            <span>${dev.channels ? `${dev.channels} ch` : ""}</span>
+                            ${dev.is_default ? '<span style="color:var(--primary); font-weight:600;">Predeterminado</span>' : ''}
+                        </div>
+                    </div>
+                </div>
+            </div>
+            <button class="btn btn-sm ${isCurrentSelected ? "btn-primary" : "btn-outline"}" style="width:100%; margin-top:8px;">
+                ${isCurrentSelected ? "✓ Micrófono Seleccionado" : "Elegir este Micrófono"}
+            </button>
+        `;
+
+        card.querySelector("button").onclick = () => {
+            selectCustomInputMicrophone(dev.id);
+        };
+
+        detectedMicsList.appendChild(card);
+    });
+}
+
+function selectCustomInputMicrophone(devId) {
+    if (selectInputDevice) selectInputDevice.value = devId;
+    if (selectInputDeviceTab) selectInputDeviceTab.value = devId;
+    updateAudioRouting();
+    showToast("Micrófono de entrada cambiado con éxito");
+    if (audioDevices && audioDevices.inputs) {
+        renderDetectedMicsGrid(audioDevices.inputs);
     }
 }
 
 async function updateAudioRouting() {
     let inputDev = null;
-    if (selectInputDevice && selectInputDevice.value !== "") {
-        const parsed = parseInt(selectInputDevice.value);
-        inputDev = isNaN(parsed) ? selectInputDevice.value : parsed;
+    const sourceSelect = selectInputDeviceTab && selectInputDeviceTab.value !== "" ? selectInputDeviceTab : selectInputDevice;
+    
+    if (sourceSelect && sourceSelect.value !== "") {
+        const parsed = parseInt(sourceSelect.value);
+        inputDev = isNaN(parsed) ? sourceSelect.value : parsed;
     }
-    const primary = selectPrimaryOutput.value ? parseInt(selectPrimaryOutput.value) : null;
-    const secondary = selectSecondaryOutput.value ? parseInt(selectSecondaryOutput.value) : null;
+
+    // Sync dropdown values between sidebar and tab
+    if (selectInputDevice && sourceSelect && selectInputDevice.value !== sourceSelect.value) {
+        selectInputDevice.value = sourceSelect.value;
+    }
+    if (selectInputDeviceTab && sourceSelect && selectInputDeviceTab.value !== sourceSelect.value) {
+        selectInputDeviceTab.value = sourceSelect.value;
+    }
+
+    const primary = selectPrimaryOutput.value ? parseInt(selectPrimaryOutput.value) : (selectPrimaryOutputTab && selectPrimaryOutputTab.value ? parseInt(selectPrimaryOutputTab.value) : null);
+    const secondary = selectSecondaryOutput.value ? parseInt(selectSecondaryOutput.value) : (selectSecondaryOutputTab && selectSecondaryOutputTab.value ? parseInt(selectSecondaryOutputTab.value) : null);
     const hearMyself = checkHearMyself.checked;
 
+    if (selectPrimaryOutputTab && selectPrimaryOutput && selectPrimaryOutputTab.value !== selectPrimaryOutput.value) {
+        selectPrimaryOutputTab.value = selectPrimaryOutput.value;
+    }
+    if (selectSecondaryOutputTab && selectSecondaryOutput && selectSecondaryOutputTab.value !== selectSecondaryOutput.value) {
+        selectSecondaryOutputTab.value = selectSecondaryOutput.value;
+    }
+
     // Match browser deviceId if possible
-    if (selectInputDevice && selectInputDevice.selectedIndex > 0) {
-        const val = selectInputDevice.value;
+    if (sourceSelect && sourceSelect.selectedIndex > 0) {
+        const val = sourceSelect.value;
         const directMatch = browserAudioInputs.find(b => b.deviceId === val);
         if (directMatch) {
             selectedMicBrowserId = directMatch.deviceId;
         } else {
-            const selectedText = selectInputDevice.options[selectInputDevice.selectedIndex].text.toLowerCase();
+            const selectedText = sourceSelect.options[sourceSelect.selectedIndex].text.toLowerCase();
             const matched = browserAudioInputs.find(b => {
                 const lbl = (b.label || "").toLowerCase();
                 return lbl && (selectedText.includes(lbl) || lbl.includes(selectedText.slice(0, 15)));
@@ -327,6 +435,18 @@ async function updateAudioRouting() {
         }
     } else {
         selectedMicBrowserId = null;
+    }
+
+    if (appConfig) {
+        appConfig.input_device = inputDev;
+        appConfig.output_device_primary = primary;
+        appConfig.output_device_secondary = secondary;
+        appConfig.hear_myself = hearMyself;
+    }
+
+    if (micSelectedBadge && sourceSelect) {
+        const txt = sourceSelect.selectedIndex > 0 ? sourceSelect.options[sourceSelect.selectedIndex].text : "Micrófono Predeterminado";
+        micSelectedBadge.textContent = txt.length > 25 ? txt.substring(0, 25) + "..." : txt;
     }
 
     if (isLocalServer) {
@@ -1340,15 +1460,201 @@ function setupEventListeners() {
 
     // Routing selects
     if (selectInputDevice) selectInputDevice.addEventListener("change", updateAudioRouting);
-    selectPrimaryOutput.addEventListener("change", updateAudioRouting);
-    selectSecondaryOutput.addEventListener("change", updateAudioRouting);
-    checkHearMyself.addEventListener("change", updateAudioRouting);
+    if (selectInputDeviceTab) selectInputDeviceTab.addEventListener("change", updateAudioRouting);
+    if (selectPrimaryOutput) selectPrimaryOutput.addEventListener("change", updateAudioRouting);
+    if (selectPrimaryOutputTab) selectPrimaryOutputTab.addEventListener("change", updateAudioRouting);
+    if (selectSecondaryOutput) selectSecondaryOutput.addEventListener("change", updateAudioRouting);
+    if (selectSecondaryOutputTab) selectSecondaryOutputTab.addEventListener("change", updateAudioRouting);
+    if (checkHearMyself) checkHearMyself.addEventListener("change", updateAudioRouting);
+
+    // Refresh buttons
+    if (btnRefreshDevicesTab) btnRefreshDevicesTab.addEventListener("click", () => {
+        loadAudioDevices();
+        showToast("🔄 Lista de micrófonos y salidas actualizada");
+    });
+    if (btnRefreshDevicesSide) btnRefreshDevicesSide.addEventListener("click", () => {
+        loadAudioDevices();
+        showToast("🔄 Lista de micrófonos actualizada");
+    });
+
+    // Mic Live Test button
+    if (btnToggleMicTest) btnToggleMicTest.addEventListener("click", toggleMicTest);
+
+    // Test Sound Tone buttons
+    if (btnTestPrimarySound) btnTestPrimarySound.addEventListener("click", () => playTestTone(false));
+    if (btnTestSecondarySound) btnTestSecondarySound.addEventListener("click", () => playTestTone(true));
 
     // Modals
     document.getElementById("btnOpenSettings").addEventListener("click", openSettingsModal);
     document.getElementById("btnSaveSettings").addEventListener("click", saveSettings);
     document.getElementById("btnAddNewVoice").addEventListener("click", openNewVoiceModal);
     document.getElementById("btnSaveNewVoice").addEventListener("click", saveNewVoice);
+}
+
+// --- Microphone Live VU Meter & Oscilloscope Test ---
+async function toggleMicTest() {
+    if (isMicTesting) {
+        stopMicTest();
+    } else {
+        await startMicTest();
+    }
+}
+
+async function startMicTest() {
+    if (isRecording || isLiveStreaming) {
+        showToast("Detén la grabación o transmisión antes de probar el micrófono.", true);
+        return;
+    }
+
+    try {
+        const audioConstraints = {
+            echoCancellation: false,
+            noiseSuppression: false,
+            autoGainControl: false
+        };
+        if (selectedMicBrowserId) {
+            audioConstraints.deviceId = { exact: selectedMicBrowserId };
+        }
+
+        micTestStream = await navigator.mediaDevices.getUserMedia({ audio: audioConstraints });
+        micTestAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
+        if (micTestAudioCtx.state === 'suspended') await micTestAudioCtx.resume();
+
+        const source = micTestAudioCtx.createMediaStreamSource(micTestStream);
+        micTestAnalyser = micTestAudioCtx.createAnalyser();
+        micTestAnalyser.fftSize = 256;
+        source.connect(micTestAnalyser);
+
+        isMicTesting = true;
+        if (btnToggleMicTestIcon) btnToggleMicTestIcon.textContent = "⏹️";
+        if (btnToggleMicTestText) btnToggleMicTestText.textContent = "Detener Prueba";
+        if (btnToggleMicTest) btnToggleMicTest.classList.add("active");
+        if (micTestStatus) {
+            micTestStatus.className = "status-pill active";
+            micTestStatus.textContent = "Probando en vivo...";
+        }
+
+        drawMicTestLoop();
+        showToast("Prueba de micrófono iniciada. ¡Habla para ver el nivel!");
+
+    } catch (err) {
+        console.error("Error al iniciar prueba de mic:", err);
+        showToast("No se pudo acceder al micrófono seleccionado para la prueba.", true);
+        stopMicTest();
+    }
+}
+
+function stopMicTest() {
+    isMicTesting = false;
+    if (micTestAnimFrame) cancelAnimationFrame(micTestAnimFrame);
+    if (micTestStream) {
+        micTestStream.getTracks().forEach(track => track.stop());
+        micTestStream = null;
+    }
+    if (micTestAudioCtx) {
+        micTestAudioCtx.close().catch(() => {});
+        micTestAudioCtx = null;
+    }
+
+    if (btnToggleMicTestIcon) btnToggleMicTestIcon.textContent = "▶️";
+    if (btnToggleMicTestText) btnToggleMicTestText.textContent = "Probar Micrófono";
+    if (btnToggleMicTest) btnToggleMicTest.classList.remove("active");
+    if (micTestStatus) {
+        micTestStatus.className = "status-pill idle";
+        micTestStatus.textContent = "En reposo";
+    }
+    if (micTestVuFill) micTestVuFill.style.width = "0%";
+
+    // Clear test canvas
+    if (micTestCanvas) {
+        const ctx = micTestCanvas.getContext("2d");
+        ctx.fillStyle = "#090c12";
+        ctx.fillRect(0, 0, micTestCanvas.width, micTestCanvas.height);
+    }
+}
+
+function drawMicTestLoop() {
+    if (!isMicTesting || !micTestAnalyser || !micTestCanvas) return;
+    micTestAnimFrame = requestAnimationFrame(drawMicTestLoop);
+
+    const bufferLength = micTestAnalyser.frequencyBinCount;
+    const dataArray = new Uint8Array(bufferLength);
+    micTestAnalyser.getByteFrequencyData(dataArray);
+
+    // Calculate RMS Volume
+    let sum = 0;
+    for (let i = 0; i < bufferLength; i++) {
+        sum += dataArray[i];
+    }
+    const avg = sum / bufferLength;
+    const percent = Math.min(100, Math.round((avg / 128) * 100));
+
+    if (micTestVuFill) {
+        micTestVuFill.style.width = `${percent}%`;
+    }
+
+    // Dynamic Status text
+    if (micTestStatus) {
+        if (percent > 85) {
+            micTestStatus.className = "status-pill clipping";
+            micTestStatus.textContent = `⚠️ Saturación (${percent}%)`;
+        } else if (percent > 20) {
+            micTestStatus.className = "status-pill online";
+            micTestStatus.textContent = `🟢 Nivel Óptimo (${percent}%)`;
+        } else if (percent > 5) {
+            micTestStatus.className = "status-pill active";
+            micTestStatus.textContent = `🎙️ Hablando (${percent}%)`;
+        } else {
+            micTestStatus.className = "status-pill idle";
+            micTestStatus.textContent = "En silencio (0%)";
+        }
+    }
+
+    // Draw Canvas Waveform
+    const ctx = micTestCanvas.getContext("2d");
+    ctx.fillStyle = "rgba(9, 12, 18, 0.35)";
+    ctx.fillRect(0, 0, micTestCanvas.width, micTestCanvas.height);
+
+    const barWidth = (micTestCanvas.width / bufferLength) * 2;
+    let x = 0;
+
+    for (let i = 0; i < bufferLength; i++) {
+        const barHeight = (dataArray[i] / 255) * micTestCanvas.height;
+        const gradient = ctx.createLinearGradient(0, micTestCanvas.height, 0, 0);
+        gradient.addColorStop(0, "#00f0ff");
+        gradient.addColorStop(0.7, "#9d4edd");
+        gradient.addColorStop(1, "#ff007f");
+
+        ctx.fillStyle = gradient;
+        ctx.fillRect(x, micTestCanvas.height - barHeight, barWidth, barHeight);
+        x += barWidth + 1;
+    }
+}
+
+// --- Test Sound Synthesizer Tone ---
+function playTestTone(isSecondary = false) {
+    try {
+        const ctx = new (window.AudioContext || window.webkitAudioContext)();
+        const osc = ctx.createOscillator();
+        const gain = ctx.createGain();
+
+        osc.type = "sine";
+        osc.frequency.setValueAtTime(isSecondary ? 880 : 523.25, ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(isSecondary ? 440 : 1046.50, ctx.currentTime + 0.35);
+
+        gain.gain.setValueAtTime(0.3, ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.45);
+
+        osc.connect(gain);
+        gain.connect(ctx.destination);
+
+        osc.start();
+        osc.stop(ctx.currentTime + 0.5);
+
+        showToast(isSecondary ? "🔊 Tono de prueba reproducido en canal Discord" : "🔊 Tono de prueba reproducido en Auriculares");
+    } catch (e) {
+        showToast("Error al reproducir tono de prueba", true);
+    }
 }
 
 // --- Tab Switching ---
