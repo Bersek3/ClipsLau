@@ -59,6 +59,7 @@ const canvasCtx = canvas.getContext("2d");
 const apiStatusBadge = document.getElementById("apiStatusBadge");
 const statusText = document.getElementById("statusText");
 const creditAlertBanner = document.getElementById("creditAlertBanner");
+const corsAlertBanner = document.getElementById("corsAlertBanner");
 const btnPtt = document.getElementById("btnPtt");
 const recordingBadge = document.getElementById("recordingBadge");
 const processingBadge = document.getElementById("processingBadge");
@@ -267,6 +268,14 @@ async function loadAppConfig() {
     } else {
         apiStatusBadge.className = "status-badge error";
         statusText.textContent = "Sin API Key";
+    }
+
+    if (corsAlertBanner) {
+        if (!isLocalServer && window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1") {
+            corsAlertBanner.classList.remove("hidden");
+        } else {
+            corsAlertBanner.classList.add("hidden");
+        }
     }
 }
 
@@ -1006,10 +1015,17 @@ async function processLiveTextDirect(text) {
 
     } catch (e) {
         console.warn("Direct TTS error:", e.message);
+        const isCors = e.message && (e.message.includes("CORS") || e.message.includes("Failed to fetch") || e.message.includes("NetworkError"));
         feedItem.querySelector(".feed-meta").innerHTML = `
             <span class="feed-time">${timeStr}</span>
-            <span class="feed-tag" style="background:rgba(255,51,102,0.2); color:#ff3366;">ERROR</span>
+            <span class="feed-tag" style="background:rgba(255,51,102,0.2); color:#ff3366;" title="${e.message}">
+                ${isCors ? "⚠️ CORS / SERVIDOR" : "ERROR"}
+            </span>
         `;
+        if (isCors && !sessionStorage.getItem("cors_notified")) {
+            sessionStorage.setItem("cors_notified", "1");
+            showToast("⚠️ Para clonar con IA sin CORS, inicia 'python server.py' y usa http://localhost:7860", true);
+        }
     } finally {
         if (isLiveStreaming) {
             updateLiveState("listening");

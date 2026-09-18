@@ -77,6 +77,18 @@
             <button class="banner-close" onclick="document.getElementById('creditAlertBanner').classList.add('hidden')">×</button>
         </div>
 
+        <!-- Server Connection Alert Banner (Shown on GitHub Pages if backend is not connected) -->
+        <div id="corsAlertBanner" class="credit-banner hidden" style="background: rgba(124, 58, 237, 0.15); border-color: rgba(124, 58, 237, 0.4);">
+            <div class="banner-content">
+                <div class="banner-icon">🌐</div>
+                <div>
+                    <strong>Modo GitHub Pages:</strong>
+                    <span>Para clonar tu voz con IA y transmitir a Discord sin restricciones CORS del navegador, inicia tu servidor ejecutando <code>python server.py</code> y abre <a href="http://localhost:7860" style="color:var(--primary); font-weight:bold;">http://localhost:7860</a> (o configura tu túnel HTTPS en ⚙️ Configuración).</span>
+                </div>
+            </div>
+            <button class="banner-close" onclick="document.getElementById('corsAlertBanner').classList.add('hidden')">×</button>
+        </div>
+
         <!-- Main Layout Grid -->
         <main class="main-grid">
             <!-- Left Column: Voice Changer & Studio -->
