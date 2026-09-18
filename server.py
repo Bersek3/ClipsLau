@@ -86,6 +86,10 @@ def get_current_user(authorization: Optional[str] = Header(None)) -> Optional[di
 async def favicon():
     return Response(content=b"", media_type="image/x-icon")
 
+@app.get("/api/health")
+def health_check():
+    return {"status": "ok", "service": "Fish Audio Voice Changer", "version": "2.0"}
+
 # =========================================================================
 # 🔐 AUTHENTICATION ENDPOINTS (MONGODB)
 # =========================================================================

@@ -1,5 +1,17 @@
-// Environment Detection
-const isLocalServer = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1";
+// Environment & Backend Server Detection
+let customBackendUrl = localStorage.getItem("custom_backend_url") || "";
+let isLocalServer = window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1" || !!customBackendUrl;
+
+function getApiUrl(endpoint) {
+    if (customBackendUrl) {
+        return `${customBackendUrl.replace(/\/+$/, "")}${endpoint}`;
+    }
+    if (window.location.hostname === "localhost" || window.location.hostname === "127.0.0.1") {
+        return endpoint;
+    }
+    // Default fallback for GitHub Pages trying to reach local server
+    return `http://localhost:7860${endpoint}`;
+}
 
 // State
 let appConfig = null;
@@ -127,6 +139,7 @@ const newVoiceModal = document.getElementById("newVoiceModal");
 const settingApiKey = document.getElementById("settingApiKey");
 const settingModel = document.getElementById("settingModel");
 const settingLang = document.getElementById("settingLang");
+const settingBackendUrl = document.getElementById("settingBackendUrl");
 const newVoiceId = document.getElementById("newVoiceId");
 const newVoiceName = document.getElementById("newVoiceName");
 const newVoiceDesc = document.getElementById("newVoiceDesc");
@@ -221,14 +234,17 @@ function showToast(message, isError = false) {
 
 // --- API Config & Devices ---
 async function loadAppConfig() {
-    if (isLocalServer) {
-        try {
-            const res = await fetch("/api/config", { headers: getAuthHeaders(false) });
-            if (res.ok) {
-                const data = await res.json();
-                appConfig = data.config;
-            }
-        } catch (e) {}
+    try {
+        const res = await fetch(getApiUrl("/api/config"), { headers: getAuthHeaders(false) });
+        if (res.ok) {
+            const data = await res.json();
+            appConfig = data.config;
+            isLocalServer = true;
+        }
+    } catch (e) {
+        if (window.location.hostname !== "localhost" && window.location.hostname !== "127.0.0.1" && !customBackendUrl) {
+            isLocalServer = false;
+        }
     }
 
     if (!appConfig) {
@@ -247,7 +263,7 @@ async function loadAppConfig() {
 
     if (appConfig.api_key) {
         apiStatusBadge.className = "status-badge online";
-        statusText.textContent = isLocalServer ? "API y Servidor Listos" : "API Lista (Modo Web)";
+        statusText.textContent = isLocalServer ? "Servidor y API Conectados" : "API Lista (Modo Web)";
     } else {
         apiStatusBadge.className = "status-badge error";
         statusText.textContent = "Sin API Key";
@@ -276,16 +292,15 @@ async function loadAudioDevices() {
         }
     } catch (mErr) {}
 
-    if (isLocalServer) {
-        try {
-            const res = await fetch("/api/devices");
-            if (res.ok) {
-                audioDevices = await res.json();
-                backendInputs = audioDevices.inputs || [];
-                backendOutputs = audioDevices.outputs || [];
-            }
-        } catch (e) {}
-    }
+    try {
+        const res = await fetch(getApiUrl("/api/devices"));
+        if (res.ok) {
+            audioDevices = await res.json();
+            backendInputs = audioDevices.inputs || [];
+            backendOutputs = audioDevices.outputs || [];
+            isLocalServer = true;
+        }
+    } catch (e) {}
 
     const allInputs = backendInputs.length > 0 ? backendInputs : browserAudioInputs.map((d, i) => ({
         id: d.deviceId,
@@ -469,41 +484,39 @@ async function updateAudioRouting() {
         micSelectedBadge.textContent = txt.length > 25 ? txt.substring(0, 25) + "..." : txt;
     }
 
-    if (isLocalServer) {
-        try {
-            await fetch("/api/config", {
-                method: "POST",
-                headers: getAuthHeaders(true),
-                body: JSON.stringify({
-                    input_device: typeof inputDev === "number" ? inputDev : null,
-                    output_device_primary: primary,
-                    output_device_secondary: secondary,
-                    hear_myself: hearMyself
-                })
-            });
-        } catch (e) {}
-    }
+    try {
+        await fetch(getApiUrl("/api/config"), {
+            method: "POST",
+            headers: getAuthHeaders(true),
+            body: JSON.stringify({
+                input_device: typeof inputDev === "number" ? inputDev : null,
+                output_device_primary: primary,
+                output_device_secondary: secondary,
+                hear_myself: hearMyself
+            })
+        });
+    } catch (e) {}
 }
 
 async function loadVoices() {
     voices = DEFAULT_VOICES_FALLBACK;
-    if (isLocalServer) {
-        try {
-            const res = await fetch("/api/voices", { headers: getAuthHeaders(false) });
-            if (res.ok) {
-                const backendVoices = await res.json();
-                if (backendVoices && backendVoices.length > 0) {
-                    voices = backendVoices;
-                }
+    try {
+        const res = await fetch(getApiUrl("/api/voices"), { headers: getAuthHeaders(false) });
+        if (res.ok) {
+            const backendVoices = await res.json();
+            if (backendVoices && backendVoices.length > 0) {
+                voices = backendVoices;
             }
-        } catch (e) {}
-    } else {
+        } else {
+            throw new Error("fallback");
+        }
+    } catch (e) {
         try {
             const customSaved = JSON.parse(localStorage.getItem("custom_voices_web") || "[]");
             if (customSaved && customSaved.length > 0) {
                 voices = [...customSaved, ...DEFAULT_VOICES_FALLBACK.filter(v => !customSaved.some(c => c.id === v.id))];
             }
-        } catch (e) {}
+        } catch (err) {}
     }
     renderVoiceList();
 }
@@ -866,7 +879,7 @@ async function replayToDiscord(audioBase64, feedElement, text) {
             tag.textContent = "🔁 RE-ENVIANDO...";
         }
 
-        const res = await fetch("/api/replay", {
+        const res = await fetch(getApiUrl("/api/replay"), {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ audio_base64: audioBase64 })
@@ -922,34 +935,30 @@ async function processLiveTextDirect(text) {
 
     try {
         let audioBlob;
-        if (isLocalServer) {
-            try {
-                const res = await fetch("/api/tts", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        text: text,
-                        reference_id: appConfig.selected_voice,
-                        model: appConfig.model || "s2.1-pro-free",
-                        play_now: true
-                    })
-                });
+        try {
+            const res = await fetch(getApiUrl("/api/tts"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    text: text,
+                    reference_id: appConfig.selected_voice,
+                    model: appConfig.model || "s2.1-pro-free",
+                    play_now: true
+                })
+            });
 
-                if (res.status === 402) {
-                    creditAlertBanner.classList.remove("hidden");
-                    throw new Error("Créditos de desarrollador insuficientes (Error 402).");
-                }
+            if (res.status === 402) {
+                creditAlertBanner.classList.remove("hidden");
+                throw new Error("Créditos de desarrollador insuficientes (Error 402).");
+            }
 
-                if (res.ok) {
-                    audioBlob = await res.blob();
-                } else {
-                    audioBlob = await callFishAudioDirect(text);
-                }
-            } catch (err) {
-                if (err.message.includes("402")) throw err;
+            if (res.ok) {
+                audioBlob = await res.blob();
+            } else {
                 audioBlob = await callFishAudioDirect(text);
             }
-        } else {
+        } catch (err) {
+            if (err.message.includes("402")) throw err;
             audioBlob = await callFishAudioDirect(text);
         }
         
@@ -1031,17 +1040,16 @@ async function processLiveSentenceChunk(blob) {
     liveSentencesFeed.prepend(feedItem);
 
     try {
-        if (isLocalServer) {
-            const formData = new FormData();
-            formData.append("file", blob, "chunk.webm");
-            if (appConfig && appConfig.selected_voice) {
-                formData.append("reference_id", appConfig.selected_voice);
-            }
+        const formData = new FormData();
+        formData.append("file", blob, "chunk.webm");
+        if (appConfig && appConfig.selected_voice) {
+            formData.append("reference_id", appConfig.selected_voice);
+        }
 
-            const res = await fetch("/api/voice-convert", {
-                method: "POST",
-                body: formData
-            });
+        const res = await fetch(getApiUrl("/api/voice-convert"), {
+            method: "POST",
+            body: formData
+        });
 
             if (res.status === 402) {
                 creditAlertBanner.classList.remove("hidden");
@@ -1230,60 +1238,60 @@ async function sendVoiceToConvert(audioBlob) {
     transcriptionText.textContent = "Procesando con IA...";
 
     try {
-        if (isLocalServer) {
-            const formData = new FormData();
-            formData.append("file", audioBlob, "voice.webm");
-            if (appConfig && appConfig.selected_voice) {
-                formData.append("reference_id", appConfig.selected_voice);
-            }
+        const formData = new FormData();
+        formData.append("file", audioBlob, "voice.webm");
+        if (appConfig && appConfig.selected_voice) {
+            formData.append("reference_id", appConfig.selected_voice);
+        }
 
-            const res = await fetch("/api/voice-convert", {
-                method: "POST",
-                body: formData
-            });
+        const res = await fetch(getApiUrl("/api/voice-convert"), {
+            method: "POST",
+            body: formData
+        });
 
-            if (res.status === 402) {
-                creditAlertBanner.classList.remove("hidden");
-                throw new Error("Créditos insuficientes en tu cuenta de desarrollador de Fish Audio (Error 402). Recarga en fish.audio/app/developers");
-            }
+        if (res.status === 402) {
+            creditAlertBanner.classList.remove("hidden");
+            throw new Error("Créditos insuficientes en tu cuenta de desarrollador de Fish Audio (Error 402). Recarga en fish.audio/app/developers");
+        }
 
-            if (!res.ok) {
-                const errJson = await res.json().catch(() => ({ detail: "Error en el servidor" }));
-                throw new Error(errJson.detail || `Error HTTP ${res.status}`);
-            }
+        if (!res.ok) {
+            const errJson = await res.json().catch(() => ({ detail: "Error en el servidor" }));
+            throw new Error(errJson.detail || `Error HTTP ${res.status}`);
+        }
 
-            const data = await res.json();
-            transcriptionText.textContent = `"${data.transcription}"`;
-            transcriptionStatus.textContent = "✓ Clonado con Éxito";
+        const data = await res.json();
+        transcriptionText.textContent = `"${data.transcription}"`;
+        transcriptionStatus.textContent = "✓ Clonado con Éxito";
 
-            if (latestAudioCard) latestAudioCard.classList.remove("hidden");
-            if (audioPlayer) {
-                audioPlayer.src = data.audio_base64;
-                audioPlayer.play().catch(e => console.warn(e));
-            }
-            if (btnDownloadMic) {
-                btnDownloadMic.href = data.audio_base64;
-            }
-            if (btnReplayMic) {
-                btnReplayMic.onclick = () => {
-                    if (audioPlayer) {
-                        audioPlayer.currentTime = 0;
-                        audioPlayer.play().catch(() => {});
-                    }
-                };
-            }
+        if (latestAudioCard) latestAudioCard.classList.remove("hidden");
+        if (audioPlayer) {
+            audioPlayer.src = data.audio_base64;
+            audioPlayer.play().catch(e => console.warn(e));
+        }
+        if (btnDownloadMic) {
+            btnDownloadMic.href = data.audio_base64;
+        }
+        if (btnReplayMic) {
+            btnReplayMic.onclick = () => {
+                if (audioPlayer) {
+                    audioPlayer.currentTime = 0;
+                    audioPlayer.play().catch(() => {});
+                }
+            };
+        }
 
-            showToast("¡Voz clonada y transmitida con éxito!");
-        } else {
-            // Standalone Web Mode (GitHub Pages)
+        showToast("¡Voz clonada y transmitida con éxito!");
+
+    } catch (err) {
+        // Fallback for standalone web
+        if (err.message.includes("Failed to fetch") || err.message.includes("NetworkError")) {
             const textToSay = manualPttTranscript || "¡Hola! Probando voz clonada con inteligencia artificial.";
             transcriptionText.textContent = `"${textToSay}"`;
             await sendToFishAudio(textToSay);
+        } else {
+            transcriptionStatus.textContent = "❌ Error";
+            showToast(err.message, true);
         }
-
-    } catch (err) {
-        transcriptionStatus.textContent = "❌ Error";
-        showToast(err.message, true);
     } finally {
         isProcessing = false;
         processingBadge.classList.add("hidden");
@@ -1302,34 +1310,31 @@ async function sendToFishAudio(text) {
 
     try {
         let audioBlob;
-        if (isLocalServer) {
-            try {
-                const res = await fetch("/api/tts", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        text: text,
-                        reference_id: appConfig.selected_voice,
-                        model: appConfig.model || "s2.1-pro-free",
-                        play_now: true
-                    })
-                });
+        try {
+            const res = await fetch(getApiUrl("/api/tts"), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                    text: text,
+                    reference_id: appConfig.selected_voice,
+                    model: appConfig.model || "s2.1-pro-free",
+                    play_now: true
+                })
+            });
 
-                if (res.status === 402) {
-                    creditAlertBanner.classList.remove("hidden");
-                    throw new Error("Créditos insuficientes en tu cuenta de desarrollador de Fish Audio (Error 402). Recarga en fish.audio/app/developers");
-                }
+            if (res.status === 402) {
+                creditAlertBanner.classList.remove("hidden");
+                throw new Error("Créditos insuficientes en tu cuenta de desarrollador de Fish Audio (Error 402). Recarga en fish.audio/app/developers");
+            }
 
-                if (res.ok) {
-                    audioBlob = await res.blob();
-                } else {
-                    throw new Error("Fallback directo");
-                }
-            } catch (serverErr) {
-                if (serverErr.message.includes("402")) throw serverErr;
+            if (res.ok) {
+                audioBlob = await res.blob();
+                isLocalServer = true;
+            } else {
                 audioBlob = await callFishAudioDirect(text);
             }
-        } else {
+        } catch (serverErr) {
+            if (serverErr.message.includes("402")) throw serverErr;
             audioBlob = await callFishAudioDirect(text);
         }
 
@@ -1385,20 +1390,25 @@ async function sendToFishAudio(text) {
 
 async function callFishAudioDirect(text) {
     const apiKey = (appConfig && appConfig.api_key) || localStorage.getItem("fish_api_key") || "sk-fish-MrvjytXetS4Gh8Yrlj7n380D3CvWK3T4McgK6WSk6Dc";
-    const directRes = await fetch("https://api.fish.audio/v1/tts", {
-        method: "POST",
-        headers: {
-            "Authorization": `Bearer ${apiKey}`,
-            "Content-Type": "application/json",
-            "model": (appConfig && appConfig.model) || "s2.1-pro-free"
-        },
-        body: JSON.stringify({
-            text: text,
-            reference_id: (appConfig && appConfig.selected_voice) || "97582f301e1c4f93a514ceda15e23e26",
-            format: "mp3",
-            latency: "balanced"
-        })
-    });
+    let directRes;
+    try {
+        directRes = await fetch("https://api.fish.audio/v1/tts", {
+            method: "POST",
+            headers: {
+                "Authorization": `Bearer ${apiKey}`,
+                "Content-Type": "application/json"
+            },
+            body: JSON.stringify({
+                text: text,
+                reference_id: (appConfig && appConfig.selected_voice) || "97582f301e1c4f93a514ceda15e23e26",
+                format: "mp3",
+                latency: "balanced",
+                model: (appConfig && appConfig.model) || "s2.1-pro-free"
+            })
+        });
+    } catch (netErr) {
+        throw new Error("⚠️ Bloqueo CORS en GitHub Pages: Fish Audio no permite peticiones directas desde el navegador. Inicia tu servidor ejecutando 'python server.py' en tu PC o abre la app en http://localhost:7860.");
+    }
 
     if (directRes.status === 402) {
         creditAlertBanner.classList.remove("hidden");
@@ -1768,6 +1778,7 @@ function openSettingsModal() {
     settingApiKey.value = appConfig.api_key || "";
     settingModel.value = appConfig.model || "s2.1-pro-free";
     settingLang.value = appConfig.language || "es-CL";
+    if (settingBackendUrl) settingBackendUrl.value = customBackendUrl || "";
     settingsModal.classList.remove("hidden");
 }
 
@@ -1779,28 +1790,31 @@ async function saveSettings() {
     const key = settingApiKey.value.trim();
     const model = settingModel.value;
     const lang = settingLang.value;
+    const backendUrl = settingBackendUrl ? settingBackendUrl.value.trim() : "";
 
     localStorage.setItem("fish_api_key", key);
     localStorage.setItem("fish_model", model);
     localStorage.setItem("fish_language", lang);
+    customBackendUrl = backendUrl;
+    localStorage.setItem("custom_backend_url", backendUrl);
 
-    if (isLocalServer) {
-        try {
-            await fetch("/api/config", {
-                method: "POST",
-                headers: getAuthHeaders(true),
-                body: JSON.stringify({
-                    api_key: key,
-                    model: model,
-                    language: lang
-                })
-            });
-        } catch (e) {}
-    }
+    try {
+        await fetch(getApiUrl("/api/config"), {
+            method: "POST",
+            headers: getAuthHeaders(true),
+            body: JSON.stringify({
+                api_key: key,
+                model: model,
+                language: lang
+            })
+        });
+        isLocalServer = true;
+    } catch (e) {}
 
     closeSettingsModal();
     await loadAppConfig();
-    showToast("Configuración guardada");
+    await loadVoices();
+    showToast("Configuración guardada con éxito");
 }
 
 function openNewVoiceModal() {
@@ -1824,24 +1838,23 @@ async function saveNewVoice() {
         return;
     }
 
-    if (isLocalServer) {
-        try {
-            await fetch("/api/voices", {
-                method: "POST",
-                headers: getAuthHeaders(true),
-                body: JSON.stringify({
-                    id: id,
-                    name: name,
-                    description: desc
-                })
-            });
-        } catch (e) {}
-    } else {
+    try {
+        const res = await fetch(getApiUrl("/api/voices"), {
+            method: "POST",
+            headers: getAuthHeaders(true),
+            body: JSON.stringify({
+                id: id,
+                name: name,
+                description: desc
+            })
+        });
+        if (!res.ok) throw new Error("Fallback local storage");
+    } catch (e) {
         try {
             const customSaved = JSON.parse(localStorage.getItem("custom_voices_web") || "[]");
             customSaved.unshift({ id, name, description: desc, sample_text: "" });
             localStorage.setItem("custom_voices_web", JSON.stringify(customSaved));
-        } catch (e) {}
+        } catch (err) {}
     }
 
     closeNewVoiceModal();
@@ -1875,27 +1888,25 @@ async function checkAuthStatus() {
         return;
     }
 
-    if (isLocalServer) {
-        try {
-            const res = await fetch("/api/auth/me", {
-                headers: getAuthHeaders(false)
-            });
+    try {
+        const res = await fetch(getApiUrl("/api/auth/me"), {
+            headers: getAuthHeaders(false)
+        });
 
-            if (res.ok) {
-                const data = await res.json();
-                currentUser = data.user;
-                updateAuthUI();
-                return;
-            } else {
-                // Token expired or invalid
-                authToken = null;
-                currentUser = null;
-                localStorage.removeItem("voice_clone_auth_token");
-                updateAuthUI();
-                return;
-            }
-        } catch (e) {}
-    }
+        if (res.ok) {
+            const data = await res.json();
+            currentUser = data.user;
+            updateAuthUI();
+            return;
+        } else {
+            // Token expired or invalid
+            authToken = null;
+            currentUser = null;
+            localStorage.removeItem("voice_clone_auth_token");
+            updateAuthUI();
+            return;
+        }
+    } catch (e) {}
 
     // In Web Mode, read stored user
     try {
@@ -1969,33 +1980,38 @@ async function submitAuth() {
     btnSubmitAuthText.textContent = "Procesando...";
 
     try {
-        if (!isLocalServer) {
-            // Web Client Mode Login/Register simulation
-            currentUser = { username: username, email: email || "" };
-            authToken = "web-token-" + btoa(username);
-            localStorage.setItem("voice_clone_auth_token", authToken);
-            localStorage.setItem("voice_clone_current_user", JSON.stringify(currentUser));
-            updateAuthUI();
-            closeAuthModal();
-            showToast(`¡Sesión iniciada como ${username}!`);
-            return;
-        }
-
         const endpoint = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
         const payload = authMode === "login" 
             ? { username, password } 
             : { username, password, email: email || null };
 
-        const res = await fetch(endpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(payload)
-        });
+        let data;
+        try {
+            const res = await fetch(getApiUrl(endpoint), {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload)
+            });
 
-        const data = await res.json();
-
-        if (!res.ok) {
-            throw new Error(data.detail || "Error en autenticación");
+            data = await res.json();
+            if (!res.ok) {
+                throw new Error(data.detail || "Error en autenticación");
+            }
+            isLocalServer = true;
+        } catch (serverAuthErr) {
+            // If backend is not running and user is on GitHub Pages, fallback to local storage
+            if (serverAuthErr.message && (serverAuthErr.message.includes("Failed to fetch") || serverAuthErr.message.includes("NetworkError"))) {
+                currentUser = { username: username, email: email || "" };
+                authToken = "web-token-" + btoa(username);
+                localStorage.setItem("voice_clone_auth_token", authToken);
+                localStorage.setItem("voice_clone_current_user", JSON.stringify(currentUser));
+                updateAuthUI();
+                closeAuthModal();
+                showToast(`¡Sesión local iniciada como ${username}!`);
+                return;
+            } else {
+                throw serverAuthErr;
+            }
         }
 
         // Save Token & User Session
@@ -2035,11 +2051,9 @@ async function logoutUser() {
     localStorage.removeItem("voice_clone_auth_token");
     localStorage.removeItem("voice_clone_current_user");
 
-    if (isLocalServer) {
-        try {
-            await fetch("/api/auth/logout", { method: "POST" });
-        } catch (e) {}
-    }
+    try {
+        await fetch(getApiUrl("/api/auth/logout"), { method: "POST" });
+    } catch (e) {}
 
     updateAuthUI();
     await loadAppConfig();

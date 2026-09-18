@@ -531,6 +531,11 @@
                         🧠 <strong>Motor Activo:</strong> Whisper AI + Filtro de Ruido Dinámico FFmpeg (Precisión Máxima)
                     </small>
                 </div>
+                <div class="form-group">
+                    <label class="form-label">URL del Servidor Backend (para GitHub Pages):</label>
+                    <input type="text" id="settingBackendUrl" class="form-input" placeholder="http://localhost:7860 o https://tu-tunel.ngrok-free.app">
+                    <small class="form-help">Si utilizas la web desde GitHub Pages, conéctala a tu servidor local ejecutando <code>python server.py</code> o con tu túnel para evitar bloqueos de CORS del navegador.</small>
+                </div>
             </div>
             <div class="modal-footer">
                 <button class="btn btn-outline" onclick="closeSettingsModal()">Cancelar</button>
