@@ -82,7 +82,7 @@ class AudioEngine:
         self.playback_queue.put((audio_bytes, target_device_id))
 
     def get_audio_devices(self):
-        """Returns lists of input and output audio devices."""
+        """Returns comprehensive lists of input (microphones) and output audio devices."""
         devices = sd.query_devices()
         hostapis = sd.query_hostapis()
         
@@ -91,27 +91,37 @@ class AudioEngine:
         
         for idx, dev in enumerate(devices):
             api_name = hostapis[dev['hostapi']]['name']
-            name = f"{dev['name']} ({api_name})"
+            raw_name = dev['name']
+            
+            # Formatted display name
+            is_virtual = any(keyword in raw_name.lower() for keyword in ['cable', 'voicemeeter', 'virtual', 'shure', '2do micro', 'salida pc', 'guitarra'])
             
             if dev['max_input_channels'] > 0:
+                prefix = "⭐ " if is_virtual else "🎙️ "
+                name = f"{prefix}{raw_name} ({api_name})"
                 inputs.append({
                     "id": idx,
                     "name": name,
+                    "raw_name": raw_name,
                     "channels": dev['max_input_channels'],
                     "default_samplerate": dev['default_samplerate'],
-                    "is_default": idx == sd.default.device[0]
+                    "is_default": idx == sd.default.device[0],
+                    "is_virtual": is_virtual,
+                    "api": api_name
                 })
             
             if dev['max_output_channels'] > 0:
-                # Detect special virtual devices like VB-Cable or Voicemeeter
-                is_virtual = any(keyword in dev['name'].lower() for keyword in ['cable', 'voicemeeter', 'virtual'])
+                prefix = "⭐ [Discord] " if is_virtual else "🎧 "
+                name = f"{prefix}{raw_name} ({api_name})"
                 outputs.append({
                     "id": idx,
                     "name": name,
+                    "raw_name": raw_name,
                     "channels": dev['max_output_channels'],
                     "default_samplerate": dev['default_samplerate'],
                     "is_default": idx == sd.default.device[1],
-                    "is_virtual": is_virtual
+                    "is_virtual": is_virtual,
+                    "api": api_name
                 })
                 
         return {"inputs": inputs, "outputs": outputs}
@@ -278,8 +288,12 @@ class AudioEngine:
                 except Exception as e:
                     raise Exception(f"Error en reconocimiento de voz: {e}")
         else:
-            # Default microphone
-            with sr.Microphone() as source:
+            # Default or configured microphone
+            input_idx = self.config.get("input_device")
+            mic_kwargs = {}
+            if isinstance(input_idx, int):
+                mic_kwargs["device_index"] = input_idx
+            with sr.Microphone(**mic_kwargs) as source:
                 self.recognizer.adjust_for_ambient_noise(source, duration=0.5)
                 print("Escuchando...")
                 audio = self.recognizer.listen(source, timeout=duration_seconds, phrase_time_limit=10)

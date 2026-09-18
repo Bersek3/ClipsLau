@@ -54,6 +54,7 @@ const activeVoiceDesc = document.getElementById("activeVoiceDesc");
 const activeVoiceId = document.getElementById("activeVoiceId");
 const voiceDropdownSelect = document.getElementById("voiceDropdownSelect");
 const voiceList = document.getElementById("voiceList");
+const selectInputDevice = document.getElementById("selectInputDevice");
 const selectPrimaryOutput = document.getElementById("selectPrimaryOutput");
 const selectSecondaryOutput = document.getElementById("selectSecondaryOutput");
 const checkHearMyself = document.getElementById("checkHearMyself");
@@ -62,6 +63,9 @@ const btnGenerateTTS = document.getElementById("btnGenerateTTS");
 const btnClearTTS = document.getElementById("btnClearTTS");
 const charCount = document.getElementById("charCount");
 const toast = document.getElementById("toast");
+
+let browserAudioInputs = [];
+let selectedMicBrowserId = null;
 
 // Continuous Live DOM Elements
 const btnToggleLive = document.getElementById("btnToggleLive");
@@ -210,14 +214,53 @@ async function loadAppConfig() {
 }
 
 async function loadAudioDevices() {
+    let backendInputs = [];
+    let backendOutputs = [];
+
+    // Query browser media devices to allow exact physical deviceId binding
+    try {
+        if (navigator.mediaDevices && navigator.mediaDevices.enumerateDevices) {
+            const navDevices = await navigator.mediaDevices.enumerateDevices();
+            browserAudioInputs = navDevices.filter(d => d.kind === 'audioinput');
+        }
+    } catch (mErr) {}
+
     try {
         const res = await fetch("/api/devices");
-        audioDevices = await res.json();
+        if (res.ok) {
+            audioDevices = await res.json();
+            backendInputs = audioDevices.inputs || [];
+            backendOutputs = audioDevices.outputs || [];
+        }
+    } catch (e) {}
 
-        selectPrimaryOutput.innerHTML = `<option value="">-- Dispositivo Predeterminado de Windows --</option>`;
-        selectSecondaryOutput.innerHTML = `<option value="">-- Ninguno / Desactivado --</option>`;
+    // 1. Populate Input Microphones
+    if (selectInputDevice) {
+        selectInputDevice.innerHTML = `<option value="">-- Micrófono Predeterminado del Sistema --</option>`;
+        if (backendInputs.length > 0) {
+            backendInputs.forEach(dev => {
+                const optInput = document.createElement("option");
+                optInput.value = dev.id;
+                optInput.textContent = dev.name;
+                if (appConfig && appConfig.input_device === dev.id) optInput.selected = true;
+                selectInputDevice.appendChild(optInput);
+            });
+        } else if (browserAudioInputs.length > 0) {
+            browserAudioInputs.forEach((dev, idx) => {
+                const optInput = document.createElement("option");
+                optInput.value = dev.deviceId;
+                optInput.textContent = `🎙️ ${dev.label || `Micrófono ${idx + 1}`}`;
+                selectInputDevice.appendChild(optInput);
+            });
+        }
+    }
 
-        audioDevices.outputs.forEach(dev => {
+    // 2. Populate Output Devices (Headphones & Discord Virtual Cable)
+    selectPrimaryOutput.innerHTML = `<option value="">-- Dispositivo Predeterminado de Windows --</option>`;
+    selectSecondaryOutput.innerHTML = `<option value="">-- Ninguno / Desactivado --</option>`;
+
+    if (backendOutputs.length > 0) {
+        backendOutputs.forEach(dev => {
             const isCable = dev.is_virtual || dev.name.toLowerCase().includes("cable") || dev.name.toLowerCase().includes("voicemeeter");
             const optPrimary = document.createElement("option");
             optPrimary.value = dev.id;
@@ -236,24 +279,53 @@ async function loadAudioDevices() {
             }
             selectSecondaryOutput.appendChild(optSecondary);
         });
+    } else {
+        const optPrimary = document.createElement("option");
+        optPrimary.value = "";
+        optPrimary.textContent = "🎧 Altavoces / Auriculares del Navegador";
+        selectPrimaryOutput.appendChild(optPrimary);
 
-    } catch (e) {
-        // In browser-only / mobile, audio device routing is hidden/optional
-        selectPrimaryOutput.innerHTML = `<option value="">Altavoces / Auriculares del Navegador</option>`;
-        selectSecondaryOutput.innerHTML = `<option value="">Discord Virtual Cable (Requiere app de escritorio)</option>`;
+        const optSecondary = document.createElement("option");
+        optSecondary.value = "";
+        optSecondary.textContent = "⭐ Discord Virtual Cable (Inicia el servidor local para activar)";
+        selectSecondaryOutput.appendChild(optSecondary);
     }
 }
 
 async function updateAudioRouting() {
+    let inputDev = null;
+    if (selectInputDevice && selectInputDevice.value !== "") {
+        const parsed = parseInt(selectInputDevice.value);
+        inputDev = isNaN(parsed) ? selectInputDevice.value : parsed;
+    }
     const primary = selectPrimaryOutput.value ? parseInt(selectPrimaryOutput.value) : null;
     const secondary = selectSecondaryOutput.value ? parseInt(selectSecondaryOutput.value) : null;
     const hearMyself = checkHearMyself.checked;
+
+    // Match browser deviceId if possible
+    if (selectInputDevice && selectInputDevice.selectedIndex > 0) {
+        const val = selectInputDevice.value;
+        const directMatch = browserAudioInputs.find(b => b.deviceId === val);
+        if (directMatch) {
+            selectedMicBrowserId = directMatch.deviceId;
+        } else {
+            const selectedText = selectInputDevice.options[selectInputDevice.selectedIndex].text.toLowerCase();
+            const matched = browserAudioInputs.find(b => {
+                const lbl = (b.label || "").toLowerCase();
+                return lbl && (selectedText.includes(lbl) || lbl.includes(selectedText.slice(0, 15)));
+            });
+            selectedMicBrowserId = matched ? matched.deviceId : null;
+        }
+    } else {
+        selectedMicBrowserId = null;
+    }
 
     try {
         await fetch("/api/config", {
             method: "POST",
             headers: getAuthHeaders(true),
             body: JSON.stringify({
+                input_device: typeof inputDev === "number" ? inputDev : null,
                 output_device_primary: primary,
                 output_device_secondary: secondary,
                 hear_myself: hearMyself
@@ -401,12 +473,17 @@ async function toggleLiveStreaming() {
 
 async function startLiveStreaming() {
     try {
+        const audioConstraints = {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+        };
+        if (selectedMicBrowserId) {
+            audioConstraints.deviceId = { exact: selectedMicBrowserId };
+        }
+
         liveStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
-            }
+            audio: audioConstraints
         });
 
         liveAudioCtx = new (window.AudioContext || window.webkitAudioContext)();
@@ -852,12 +929,17 @@ async function startSpeaking() {
         if (!audioCtx) audioCtx = new (window.AudioContext || window.webkitAudioContext)();
         if (audioCtx.state === 'suspended') await audioCtx.resume();
         
+        const audioConstraints = {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true
+        };
+        if (selectedMicBrowserId) {
+            audioConstraints.deviceId = { exact: selectedMicBrowserId };
+        }
+
         micStream = await navigator.mediaDevices.getUserMedia({
-            audio: {
-                echoCancellation: true,
-                noiseSuppression: true,
-                autoGainControl: true
-            }
+            audio: audioConstraints
         });
 
         // Setup Visualizer
@@ -1172,6 +1254,7 @@ function setupEventListeners() {
     });
 
     // Routing selects
+    if (selectInputDevice) selectInputDevice.addEventListener("change", updateAudioRouting);
     selectPrimaryOutput.addEventListener("change", updateAudioRouting);
     selectSecondaryOutput.addEventListener("change", updateAudioRouting);
     checkHearMyself.addEventListener("change", updateAudioRouting);
