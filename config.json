@@ -177,6 +177,12 @@
             "name": "Davo",
             "description": "",
             "sample_text": ""
+        },
+        {
+            "id": "custom_voice_id_123",
+            "name": "Mi Voz Custom",
+            "description": "Test custom voice",
+            "sample_text": ""
         }
     ]
 }

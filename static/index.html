@@ -33,11 +33,21 @@
                 </div>
             </div>
 
-            <div class="nav-controls">
-                <div id="apiStatusBadge" class="status-badge checking">
-                    <span class="pulse-dot"></span>
-                    <span id="statusText">Verificando API...</span>
+                <!-- User Auth Profile Widget -->
+                <div id="userProfileWidget" class="user-profile-widget">
+                    <button id="btnOpenLoginModal" class="btn btn-primary btn-sm btn-glow">
+                        <span>🔑 Iniciar Sesión / Registro</span>
+                    </button>
+                    <div id="userInfoNav" class="user-info-nav hidden">
+                        <div class="user-status-pill">
+                            <span class="user-avatar">👤</span>
+                            <span id="loggedInUsername" class="user-name">Usuario</span>
+                            <span class="user-online-dot" title="Conectado a MongoDB"></span>
+                        </div>
+                        <button id="btnLogout" class="btn btn-outline btn-xs" title="Cerrar sesión">Salir</button>
+                    </div>
                 </div>
+
                 <a href="https://fish.audio/app/developers" target="_blank" class="btn btn-outline btn-sm">
                     <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
                     Créditos API
@@ -397,6 +407,61 @@
             <div class="modal-footer">
                 <button class="btn btn-outline" onclick="closeNewVoiceModal()">Cancelar</button>
                 <button id="btnSaveNewVoice" class="btn btn-primary">Guardar Voz</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Authentication (Login / Register) -->
+    <div id="authModal" class="modal-overlay hidden">
+        <div class="modal-card auth-modal-card">
+            <div class="modal-header auth-modal-header">
+                <div class="auth-tabs">
+                    <button id="tabAuthLogin" class="auth-tab-btn active" onclick="switchAuthMode('login')">Iniciar Sesión</button>
+                    <button id="tabAuthRegister" class="auth-tab-btn" onclick="switchAuthMode('register')">Crear Cuenta</button>
+                </div>
+                <button class="modal-close" onclick="closeAuthModal()">×</button>
+            </div>
+            
+            <div class="modal-body auth-modal-body">
+                <!-- Alert error message -->
+                <div id="authAlert" class="auth-alert hidden"></div>
+
+                <!-- Username Input -->
+                <div class="form-group">
+                    <label class="form-label">Nombre de Usuario:</label>
+                    <div class="input-with-icon">
+                        <span class="input-icon">👤</span>
+                        <input type="text" id="authUsername" class="form-input" placeholder="Tu usuario (ej: gamer123)">
+                    </div>
+                </div>
+
+                <!-- Email Input (Register only) -->
+                <div id="authEmailGroup" class="form-group hidden">
+                    <label class="form-label">Correo Electrónico (opcional):</label>
+                    <div class="input-with-icon">
+                        <span class="input-icon">✉️</span>
+                        <input type="email" id="authEmail" class="form-input" placeholder="correo@ejemplo.com">
+                    </div>
+                </div>
+
+                <!-- Password Input -->
+                <div class="form-group">
+                    <label class="form-label">Contraseña:</label>
+                    <div class="input-with-icon">
+                        <span class="input-icon">🔒</span>
+                        <input type="password" id="authPassword" class="form-input" placeholder="Mínimo 4 caracteres">
+                    </div>
+                </div>
+
+                <!-- Submit Button -->
+                <button id="btnSubmitAuth" class="btn btn-primary btn-block btn-lg" style="margin-top:16px; width:100%;">
+                    <span id="btnSubmitAuthText">Iniciar Sesión</span>
+                </button>
+
+                <!-- Footer Hint -->
+                <p id="authFooterHint" class="auth-footer-hint">
+                    ¿No tienes cuenta? <a href="javascript:void(0)" onclick="switchAuthMode('register')">Regístrate aquí</a>
+                </p>
             </div>
         </div>
     </div>

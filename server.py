@@ -5,16 +5,17 @@ import base64
 import webbrowser
 import soundfile as sf
 import uvicorn
-from fastapi import FastAPI, HTTPException, UploadFile, File, Form
+from fastapi import FastAPI, HTTPException, UploadFile, File, Form, Header, Depends
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import HTMLResponse, Response, JSONResponse
 from pydantic import BaseModel
-from typing import Optional, List
+from typing import Optional, List, Dict, Any
 
 from audio_engine import audio_engine, load_config, save_config, CONFIG_FILE
+import db
 
-app = FastAPI(title="Fish Audio Real-Time Voice Changer")
+app = FastAPI(title="Fish Audio Real-Time Voice Changer with MongoDB Auth")
 
 app.add_middleware(
     CORSMiddleware,
@@ -23,6 +24,13 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Seed MongoDB with default 28 voices on server boot
+try:
+    _initial_voices = load_config().get("voices", [])
+    db.seed_default_voices(_initial_voices)
+except Exception as _e:
+    print(f"[Startup] Advertencia inicializando DB: {_e}")
 
 # Ensure static folder exists
 STATIC_DIR = os.path.join(os.path.dirname(__file__), "static")
@@ -55,21 +63,93 @@ class VoiceItem(BaseModel):
 class ReplayRequest(BaseModel):
     audio_base64: str
 
+class RegisterRequest(BaseModel):
+    username: str
+    password: str
+    email: Optional[str] = None
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+# Helper to retrieve current authenticated user from Authorization header
+def get_current_user(authorization: Optional[str] = Header(None)) -> Optional[dict]:
+    if not authorization:
+        return None
+    token = authorization.replace("Bearer ", "").strip()
+    payload = db.verify_token(token)
+    if not payload:
+        return None
+    return db.get_user_by_id(payload.get("user_id"))
+
+# =========================================================================
+# 🔐 AUTHENTICATION ENDPOINTS (MONGODB)
+# =========================================================================
+
+@app.post("/api/auth/register")
+def auth_register(req: RegisterRequest):
+    """Registers a new user account in MongoDB."""
+    try:
+        user_info = db.register_user(req.username, req.password, req.email)
+        return {"status": "ok", "user": user_info}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
+    except Exception as e:
+        print(f"[Auth Register Error]: {e}")
+        raise HTTPException(status_code=500, detail="Error interno al registrar usuario.")
+
+@app.post("/api/auth/login")
+def auth_login(req: LoginRequest):
+    """Authenticates user with MongoDB and returns a JWT session token."""
+    try:
+        user_info = db.authenticate_user(req.username, req.password)
+        return {"status": "ok", "user": user_info}
+    except ValueError as ve:
+        raise HTTPException(status_code=401, detail=str(ve))
+    except Exception as e:
+        print(f"[Auth Login Error]: {e}")
+        raise HTTPException(status_code=500, detail="Error interno al iniciar sesión.")
+
+@app.get("/api/auth/me")
+def auth_me(user: Optional[dict] = Depends(get_current_user)):
+    """Returns profile and custom settings for authenticated user."""
+    if not user:
+        raise HTTPException(status_code=401, detail="No has iniciado sesión o la sesión expiró.")
+    return {"status": "ok", "user": user}
+
+@app.post("/api/auth/logout")
+def auth_logout():
+    """Logs out user (client removes token from storage)."""
+    return {"status": "ok", "message": "Sesión cerrada"}
+
+# =========================================================================
+# ⚙️ CONFIG & VOICES ENDPOINTS (MONGODB SYNC)
+# =========================================================================
+
 @app.get("/api/config")
-def get_current_config():
+def get_current_config(user: Optional[dict] = Depends(get_current_user)):
     config = load_config()
-    # Mask API key partially for safety in UI
+    if user and "settings" in user:
+        # Override with user settings if authenticated
+        for k, v in user["settings"].items():
+            if v is not None:
+                config[k] = v
+        if "selected_voice" in user and user["selected_voice"]:
+            config["selected_voice"] = user["selected_voice"]
+
     masked_key = ""
     raw_key = config.get("api_key", "")
     if raw_key:
         masked_key = raw_key[:7] + "..." + raw_key[-4:] if len(raw_key) > 12 else raw_key
     return {
         "config": config,
-        "masked_key": masked_key
+        "masked_key": masked_key,
+        "is_authenticated": user is not None,
+        "username": user.get("username") if user else None
     }
 
 @app.post("/api/config")
-def update_config(req: ConfigUpdateRequest):
+def update_config(req: ConfigUpdateRequest, user: Optional[dict] = Depends(get_current_user)):
     current = load_config()
     update_data = req.dict(exclude_unset=True)
     for k, v in update_data.items():
@@ -77,6 +157,20 @@ def update_config(req: ConfigUpdateRequest):
             current[k] = v
     save_config(current)
     audio_engine.reload_config()
+
+    # If user is authenticated, also persist to their MongoDB account
+    if user:
+        db.update_user_preferences(user["user_id"], {
+            "selected_voice": current.get("selected_voice"),
+            "settings": {
+                "model": current.get("model"),
+                "language": current.get("language"),
+                "hear_myself": current.get("hear_myself"),
+                "output_device_primary": current.get("output_device_primary"),
+                "output_device_secondary": current.get("output_device_secondary")
+            }
+        })
+
     return {"status": "ok", "config": current}
 
 @app.get("/api/devices")
@@ -88,15 +182,18 @@ def get_devices():
         raise HTTPException(status_code=500, detail=str(e))
 
 @app.get("/api/voices")
-def get_voices():
-    config = load_config()
-    return config.get("voices", [])
+def get_voices(user: Optional[dict] = Depends(get_current_user)):
+    """Returns combined list of global voices + user custom voices from MongoDB."""
+    user_id = user["user_id"] if user else None
+    voices = db.get_all_voices(user_id=user_id)
+    return voices
 
 @app.post("/api/voices")
-def add_voice(voice: VoiceItem):
+def add_voice(voice: VoiceItem, user: Optional[dict] = Depends(get_current_user)):
+    """Adds a new voice ID to MongoDB (and user profile if authenticated)."""
+    # 1. Update local config as fallback
     config = load_config()
     voices = config.get("voices", [])
-    # Update if exists, else append
     existing = False
     for i, v in enumerate(voices):
         if v["id"] == voice.id:
@@ -105,20 +202,31 @@ def add_voice(voice: VoiceItem):
             break
     if not existing:
         voices.append(voice.dict())
-    
     config["voices"] = voices
     save_config(config)
     audio_engine.reload_config()
-    return {"status": "ok", "voices": voices}
+
+    # 2. Persist to MongoDB
+    if user:
+        db.add_custom_voice_to_user(user["user_id"], voice.dict())
+    else:
+        db.seed_default_voices([voice.dict()])
+
+    user_id = user["user_id"] if user else None
+    all_voices = db.get_all_voices(user_id=user_id)
+    return {"status": "ok", "voices": all_voices}
 
 @app.delete("/api/voices/{voice_id}")
-def delete_voice(voice_id: str):
+def delete_voice(voice_id: str, user: Optional[dict] = Depends(get_current_user)):
     config = load_config()
     voices = config.get("voices", [])
     config["voices"] = [v for v in voices if v["id"] != voice_id]
     save_config(config)
     audio_engine.reload_config()
-    return {"status": "ok", "voices": config["voices"]}
+    
+    user_id = user["user_id"] if user else None
+    all_voices = db.get_all_voices(user_id=user_id)
+    return {"status": "ok", "voices": all_voices}
 
 @app.post("/api/tts")
 def process_tts(req: TTSRequest):

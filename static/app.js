@@ -3,6 +3,11 @@ let appConfig = null;
 let voices = [];
 let audioDevices = { inputs: [], outputs: [] };
 
+// Auth State (MongoDB)
+let authToken = localStorage.getItem("voice_clone_auth_token") || null;
+let currentUser = null;
+let authMode = "login";
+
 // Manual PTT State
 let isRecording = false;
 let isProcessing = false;
@@ -83,12 +88,31 @@ const newVoiceId = document.getElementById("newVoiceId");
 const newVoiceName = document.getElementById("newVoiceName");
 const newVoiceDesc = document.getElementById("newVoiceDesc");
 
+// Auth DOM Elements
+const btnOpenLoginModal = document.getElementById("btnOpenLoginModal");
+const userInfoNav = document.getElementById("userInfoNav");
+const loggedInUsername = document.getElementById("loggedInUsername");
+const btnLogout = document.getElementById("btnLogout");
+const authModal = document.getElementById("authModal");
+const tabAuthLogin = document.getElementById("tabAuthLogin");
+const tabAuthRegister = document.getElementById("tabAuthRegister");
+const authAlert = document.getElementById("authAlert");
+const authUsername = document.getElementById("authUsername");
+const authEmail = document.getElementById("authEmail");
+const authEmailGroup = document.getElementById("authEmailGroup");
+const authPassword = document.getElementById("authPassword");
+const btnSubmitAuth = document.getElementById("btnSubmitAuth");
+const btnSubmitAuthText = document.getElementById("btnSubmitAuthText");
+const authFooterHint = document.getElementById("authFooterHint");
+
 // --- Initialization ---
 document.addEventListener("DOMContentLoaded", async () => {
     initCanvas();
     setupTabSwitching();
     setupEventListeners();
     setupContinuousControls();
+    setupAuthListeners();
+    await checkAuthStatus();
     await loadAppConfig();
     await loadAudioDevices();
     await loadVoices();
@@ -104,6 +128,13 @@ function initCanvas() {
     });
 }
 
+function getAuthHeaders(includeContentType = true) {
+    const headers = {};
+    if (includeContentType) headers["Content-Type"] = "application/json";
+    if (authToken) headers["Authorization"] = `Bearer ${authToken}`;
+    return headers;
+}
+
 function showToast(message, isError = false) {
     toast.textContent = message;
     toast.style.borderColor = isError ? "var(--danger)" : "var(--primary)";
@@ -116,7 +147,7 @@ function showToast(message, isError = false) {
 // --- API Config & Devices ---
 async function loadAppConfig() {
     try {
-        const res = await fetch("/api/config");
+        const res = await fetch("/api/config", { headers: getAuthHeaders(false) });
         const data = await res.json();
         appConfig = data.config;
         
@@ -176,7 +207,7 @@ async function updateAudioRouting() {
 
     await fetch("/api/config", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(true),
         body: JSON.stringify({
             output_device_primary: primary,
             output_device_secondary: secondary,
@@ -187,7 +218,7 @@ async function updateAudioRouting() {
 
 async function loadVoices() {
     try {
-        const res = await fetch("/api/voices");
+        const res = await fetch("/api/voices", { headers: getAuthHeaders(false) });
         voices = await res.json();
         renderVoiceList();
     } catch (e) {
@@ -277,7 +308,7 @@ async function selectVoice(voice) {
     
     await fetch("/api/config", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(true),
         body: JSON.stringify({ selected_voice: voice.id })
     });
     
@@ -1116,7 +1147,7 @@ async function saveSettings() {
 
     await fetch("/api/config", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(true),
         body: JSON.stringify({
             api_key: key,
             model: model,
@@ -1152,7 +1183,7 @@ async function saveNewVoice() {
 
     await fetch("/api/voices", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: getAuthHeaders(true),
         body: JSON.stringify({
             id: id,
             name: name,
@@ -1163,4 +1194,176 @@ async function saveNewVoice() {
     closeNewVoiceModal();
     await loadVoices();
     showToast(`Voz "${name}" añadida a tu biblioteca`);
+}
+
+// =========================================================================
+// 🔐 MONGODB AUTHENTICATION & USER SESSION HANDLERS
+// =========================================================================
+
+function setupAuthListeners() {
+    if (btnOpenLoginModal) btnOpenLoginModal.addEventListener("click", () => openAuthModal("login"));
+    if (btnLogout) btnLogout.addEventListener("click", logoutUser);
+    if (btnSubmitAuth) btnSubmitAuth.addEventListener("click", submitAuth);
+
+    // Press Enter to submit in auth inputs
+    [authUsername, authEmail, authPassword].forEach(input => {
+        if (input) {
+            input.addEventListener("keydown", (e) => {
+                if (e.key === "Enter") submitAuth();
+            });
+        }
+    });
+}
+
+async function checkAuthStatus() {
+    if (!authToken) {
+        currentUser = null;
+        updateAuthUI();
+        return;
+    }
+
+    try {
+        const res = await fetch("/api/auth/me", {
+            headers: getAuthHeaders(false)
+        });
+
+        if (res.ok) {
+            const data = await res.json();
+            currentUser = data.user;
+            updateAuthUI();
+        } else {
+            // Token expired or invalid
+            authToken = null;
+            currentUser = null;
+            localStorage.removeItem("voice_clone_auth_token");
+            updateAuthUI();
+        }
+    } catch (e) {
+        console.warn("Error checking auth status:", e);
+    }
+}
+
+function updateAuthUI() {
+    if (currentUser) {
+        btnOpenLoginModal.classList.add("hidden");
+        userInfoNav.classList.remove("hidden");
+        loggedInUsername.textContent = currentUser.username;
+    } else {
+        btnOpenLoginModal.classList.remove("hidden");
+        userInfoNav.classList.add("hidden");
+        loggedInUsername.textContent = "";
+    }
+}
+
+function switchAuthMode(mode) {
+    authMode = mode;
+    authAlert.className = "auth-alert hidden";
+    authAlert.textContent = "";
+
+    if (mode === "login") {
+        tabAuthLogin.classList.add("active");
+        tabAuthRegister.classList.remove("active");
+        authEmailGroup.classList.add("hidden");
+        btnSubmitAuthText.textContent = "Iniciar Sesión";
+        authFooterHint.innerHTML = `¿No tienes cuenta? <a href="javascript:void(0)" onclick="switchAuthMode('register')">Regístrate aquí</a>`;
+    } else {
+        tabAuthLogin.classList.remove("active");
+        tabAuthRegister.classList.add("active");
+        authEmailGroup.classList.remove("hidden");
+        btnSubmitAuthText.textContent = "Crear Cuenta en MongoDB";
+        authFooterHint.innerHTML = `¿Ya tienes cuenta? <a href="javascript:void(0)" onclick="switchAuthMode('login')">Inicia sesión aquí</a>`;
+    }
+}
+
+function openAuthModal(mode = "login") {
+    switchAuthMode(mode);
+    authUsername.value = "";
+    authEmail.value = "";
+    authPassword.value = "";
+    authAlert.className = "auth-alert hidden";
+    authAlert.textContent = "";
+    authModal.classList.remove("hidden");
+    authUsername.focus();
+}
+
+function closeAuthModal() {
+    authModal.classList.add("hidden");
+}
+
+async function submitAuth() {
+    const username = authUsername.value.trim();
+    const password = authPassword.value;
+    const email = authEmail.value.trim();
+
+    if (!username || !password) {
+        showAuthAlert("Ingresa usuario y contraseña", true);
+        return;
+    }
+
+    btnSubmitAuth.disabled = true;
+    const originalText = btnSubmitAuthText.textContent;
+    btnSubmitAuthText.textContent = "Procesando...";
+
+    try {
+        const endpoint = authMode === "login" ? "/api/auth/login" : "/api/auth/register";
+        const payload = authMode === "login" 
+            ? { username, password } 
+            : { username, password, email: email || null };
+
+        const res = await fetch(endpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(payload)
+        });
+
+        const data = await res.json();
+
+        if (!res.ok) {
+            throw new Error(data.detail || "Error en autenticación");
+        }
+
+        // Save Token & User Session
+        authToken = data.user.token;
+        localStorage.setItem("voice_clone_auth_token", authToken);
+        currentUser = data.user;
+
+        updateAuthUI();
+        closeAuthModal();
+
+        // Reload user voices and config
+        await loadAppConfig();
+        await loadVoices();
+
+        const successMsg = authMode === "login" 
+            ? `¡Bienvenido de nuevo, ${currentUser.username}!` 
+            : `¡Cuenta creada con éxito! Bienvenido, ${currentUser.username}`;
+        showToast(successMsg);
+
+    } catch (err) {
+        showAuthAlert(err.message, true);
+    } finally {
+        btnSubmitAuth.disabled = false;
+        btnSubmitAuthText.textContent = originalText;
+    }
+}
+
+function showAuthAlert(msg, isError = true) {
+    authAlert.className = `auth-alert ${isError ? "error" : "success"}`;
+    authAlert.textContent = msg;
+    authAlert.classList.remove("hidden");
+}
+
+async function logoutUser() {
+    authToken = null;
+    currentUser = null;
+    localStorage.removeItem("voice_clone_auth_token");
+
+    try {
+        await fetch("/api/auth/logout", { method: "POST" });
+    } catch (e) {}
+
+    updateAuthUI();
+    await loadAppConfig();
+    await loadVoices();
+    showToast("Has cerrado sesión.");
 }
