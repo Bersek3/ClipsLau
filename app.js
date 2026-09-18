@@ -1318,6 +1318,15 @@ async function sendToFishAudio(text) {
     processingBadge.classList.remove("hidden");
     transcriptionStatus.textContent = "Generando Voz IA...";
 
+    const originalBtnHTML = btnGenerateTTS.innerHTML;
+    btnGenerateTTS.disabled = true;
+    let secondsElapsed = 0;
+    btnGenerateTTS.innerHTML = `<span class="pulse-dot"></span><span> Generando Voz... (0s)</span>`;
+    const progressInterval = setInterval(() => {
+        secondsElapsed++;
+        btnGenerateTTS.innerHTML = `<span class="pulse-dot"></span><span> Generando Voz... (${secondsElapsed}s)</span>`;
+    }, 1000);
+
     try {
         let audioBlob;
         try {
@@ -1392,6 +1401,9 @@ async function sendToFishAudio(text) {
         transcriptionStatus.textContent = "❌ Error";
         showToast(err.message, true);
     } finally {
+        clearInterval(progressInterval);
+        btnGenerateTTS.disabled = false;
+        btnGenerateTTS.innerHTML = originalBtnHTML;
         isProcessing = false;
         processingBadge.classList.add("hidden");
         startIdleVisualizer();
