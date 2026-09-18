@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Fish Audio AI Voice Changer & Studio</title>
+    <!-- Google Fonts -->
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@300;400;500;600;700;800&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+    <!-- Background glow ambient effects -->
+    <div class="ambient-glow glow-1"></div>
+    <div class="ambient-glow glow-2"></div>
+    <div class="ambient-glow glow-3"></div>
+
+    <div class="app-container">
+        <!-- Top Navbar -->
+        <header class="top-nav">
+            <div class="brand">
+                <div class="logo-icon">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                        <line x1="12" y1="19" x2="12" y2="22"/>
+                    </svg>
+                </div>
+                <div>
+                    <h1>FISH AUDIO <span>LIVE</span></h1>
+                    <p class="subtitle">AI Voice Changer & Speech Studio</p>
+                </div>
+            </div>
+
+            <div class="nav-controls">
+                <div id="apiStatusBadge" class="status-badge checking">
+                    <span class="pulse-dot"></span>
+                    <span id="statusText">Verificando API...</span>
+                </div>
+                <a href="https://fish.audio/app/developers" target="_blank" class="btn btn-outline btn-sm">
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>
+                    Créditos API
+                </a>
+                <button id="btnOpenSettings" class="btn btn-icon" title="Configuración">
+                    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1 0 2.83 2 2 0 0 1-2.83 0l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-2 2 2 2 0 0 1-2-2v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83 0 2 2 0 0 1 0-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1-2-2 2 2 0 0 1 2-2h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 0-2.83 2 2 0 0 1 2.83 0l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 2-2 2 2 0 0 1 2 2v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 0 2 2 0 0 1 0 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 2 2 2 2 0 0 1-2 2h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+                </button>
+            </div>
+        </header>
+
+        <!-- Credit Alert Banner (Shown if error 402) -->
+        <div id="creditAlertBanner" class="credit-banner hidden">
+            <div class="banner-content">
+                <div class="banner-icon">⚠️</div>
+                <div>
+                    <strong>Aviso de Crédito de API (Error 402):</strong>
+                    <span>Fish Audio gestiona el saldo de la API de forma independiente a la suscripción web. Debes recargar o activar tu saldo de API de desarrollador en <a href="https://fish.audio/app/developers" target="_blank">fish.audio/app/developers</a>.</span>
+                </div>
+            </div>
+            <button class="banner-close" onclick="document.getElementById('creditAlertBanner').classList.add('hidden')">×</button>
+        </div>
+
+        <!-- Main Layout Grid -->
+        <main class="main-grid">
+            <!-- Left Column: Voice Changer & Studio -->
+            <section class="panel main-panel">
+                <!-- Mode Tabs -->
+                <div class="tabs-header">
+                    <button class="tab-btn active" data-tab="tab-continuous">
+                        <span class="live-dot-icon"></span>
+                        🔴 Transmisión Continua (Discord)
+                    </button>
+                    <button class="tab-btn" data-tab="tab-mic">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/><line x1="12" y1="19" x2="12" y2="22"/></svg>
+                        Push-to-Talk (Manual)
+                    </button>
+                    <button class="tab-btn" data-tab="tab-tts">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 7 4 4 20 4 20 7"/><line x1="9" y1="20" x2="15" y2="20"/><line x1="12" y1="4" x2="12" y2="20"/></svg>
+                        Texto a Voz con Emociones
+                    </button>
+                    <button class="tab-btn" data-tab="tab-guide">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+                        Guía Discord / Juegos
+                    </button>
+                </div>
+
+                <!-- Tab 0: Continuous Live Streaming Mode -->
+                <div id="tab-continuous" class="tab-content active">
+                    <div class="continuous-hub">
+                        <!-- Master Live Toggle Banner -->
+                        <div class="master-live-card">
+                            <div class="live-info">
+                                <div class="live-title-row">
+                                    <span id="liveStateBadge" class="live-state-badge state-off">
+                                        <span class="live-status-dot"></span>
+                                        <span id="liveStateText">MODO ESPERA (APAGADO)</span>
+                                    </span>
+                                    <span class="live-subtext">Detección automática por voz (Manos Libres)</span>
+                                </div>
+                                <p class="live-desc">Habla con total normalidad. El sistema detectará cuando hablas, clonará tus frases con Fish Audio y las transmitirá en tiempo real a Discord sin tocar ningún botón.</p>
+                            </div>
+                            <div class="live-switch-wrapper">
+                                <button id="btnToggleLive" class="btn-live-toggle">
+                                    <span class="toggle-icon">⚡</span>
+                                    <span id="btnToggleLiveText">ACTIVAR TRANSMISIÓN</span>
+                                </button>
+                            </div>
+                        </div>
+
+                        <!-- Real-Time Voice Activity / Noise Gate Meter -->
+                        <div class="vad-meter-card">
+                            <div class="meter-header">
+                                <span>🎙️ Nivel de Entrada del Micrófono (VAD):</span>
+                                <span id="vadStatusText" class="vad-level-text">En silencio</span>
+                            </div>
+                            <div class="meter-bar-container">
+                                <div id="vadMeterFill" class="meter-bar-fill" style="width: 0%;"></div>
+                                <div id="vadThresholdLine" class="meter-threshold-marker" style="left: 20%;" title="Umbral de Activación"></div>
+                            </div>
+                            <div class="meter-calibration-grid">
+                                <div class="calib-item">
+                                    <label class="calib-label">Sensibilidad / Umbral de Voz: <span id="valThreshold">20%</span></label>
+                                    <input type="range" id="sliderVadThreshold" min="5" max="60" value="20" class="range-slider">
+                                    <small>Ajusta para que no se active con tu respiración o ruido de fondo.</small>
+                                </div>
+                                <div class="calib-item">
+                                    <label class="calib-label">⚡ Pausa para Enviar (Latencia): <span id="valSilenceTime">0.4s</span></label>
+                                    <input type="range" id="sliderSilenceTime" min="2" max="10" value="4" class="range-slider">
+                                    <small>Menor tiempo = Más rápido y en tiempo real (Recomendado: 0.3s - 0.4s).</small>
+                                </div>
+                            </div>
+                        </div>
+
+                        <!-- Live Stream Sentences Feed -->
+                        <div class="live-feed-card">
+                            <div class="card-header-sm">
+                                <span>📡 Historial de Transmisión en Directo a Discord:</span>
+                                <button id="btnClearFeed" class="btn-text-sm">Limpiar feed</button>
+                            </div>
+                            <div id="liveSentencesFeed" class="sentences-feed">
+                                <div class="empty-feed-msg">Cuando actives la transmisión y hables, verás las frases clonadas transmitiéndose aquí...</div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 1: Live Mic Voice Changer (PTT) -->
+                <div id="tab-mic" class="tab-content">
+                    <div class="mic-hub">
+                        <!-- Canvas Visualizer -->
+                        <div class="visualizer-container">
+                            <canvas id="visualizerCanvas"></canvas>
+                            <div id="recordingBadge" class="rec-badge hidden">
+                                <span class="rec-dot"></span> GRABANDO TU VOZ
+                            </div>
+                            <div id="processingBadge" class="proc-badge hidden">
+                                <div class="spinner-small"></div> CLONANDO CON FISH AUDIO...
+                            </div>
+                        </div>
+
+                        <!-- Big PTT Button -->
+                        <div class="ptt-container">
+                            <button id="btnPtt" class="ptt-btn">
+                                <div class="ptt-inner">
+                                    <svg class="mic-svg" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                                        <path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/>
+                                        <path d="M19 10v2a7 7 0 0 1-14 0v-2"/>
+                                        <line x1="12" y1="19" x2="12" y2="22"/>
+                                    </svg>
+                                    <span class="ptt-label">MANTÉN PULSADO PARA HABLAR</span>
+                                    <span class="ptt-hint">o presiona la tecla [ESPACIO]</span>
+                                </div>
+                            </button>
+                        </div>
+
+                        <!-- Transcription Box -->
+                        <div class="transcription-card">
+                            <div class="card-header-sm">
+                                <span>🗣️ Transcripción Detectada:</span>
+                                <span id="transcriptionStatus" class="tag-status">Listo</span>
+                            </div>
+                            <div id="transcriptionText" class="transcription-text">
+                                Habla al micrófono para ver la transcripción aquí y escucharla transformada con la voz de IA...
+                            </div>
+                        </div>
+
+                        <!-- Audio Player Output -->
+                        <div id="latestAudioCard" class="latest-audio-card hidden">
+                            <div class="audio-info">
+                                <span class="audio-title">✨ Última Salida Clonada</span>
+                                <span id="audioDuration" class="audio-duration">0.0s</span>
+                            </div>
+                            <audio id="audioPlayer" controls></audio>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 2: Text to Speech with Emotion Tags -->
+                <div id="tab-tts" class="tab-content">
+                    <div class="tts-hub">
+                        <label class="form-label">Escribe el texto que dirá tu voz clonada:</label>
+                        
+                        <!-- Emotion Tags Quick Insert -->
+                        <div class="emotion-tags-bar">
+                            <span class="tags-label">Emociones Fish Audio:</span>
+                            <button class="tag-chip" onclick="insertTag('[excited]')">😃 [excited]</button>
+                            <button class="tag-chip" onclick="insertTag('[laughing]')">😂 [laughing]</button>
+                            <button class="tag-chip" onclick="insertTag('[whispering]')">🤫 [whispering]</button>
+                            <button class="tag-chip" onclick="insertTag('[angry]')">😡 [angry]</button>
+                            <button class="tag-chip" onclick="insertTag('[crying]')">😭 [crying]</button>
+                            <button class="tag-chip" onclick="insertTag('[sighing]')">😮‍💨 [sighing]</button>
+                            <button class="tag-chip" onclick="insertTag('[screaming]')">😱 [screaming]</button>
+                        </div>
+
+                        <div class="textarea-wrapper">
+                            <textarea id="ttsTextInput" placeholder="Escribe algo aquí... Ejemplo: [excited] ¡Hola a todos! [laughing] Esta es mi voz con inteligencia artificial."></textarea>
+                            <div class="textarea-footer">
+                                <span id="charCount">0 caracteres</span>
+                                <span class="key-shortcut">Ctrl + Enter para enviar</span>
+                            </div>
+                        </div>
+
+                        <div class="tts-actions">
+                            <button id="btnGenerateTTS" class="btn btn-primary btn-lg">
+                                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="5 3 19 12 5 21 5 3"/></svg>
+                                <span>Generar y Reproducir en Directo</span>
+                            </button>
+                            <button id="btnClearTTS" class="btn btn-outline">Limpiar</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Tab 3: Discord / Virtual Cable Guide -->
+                <div id="tab-guide" class="tab-content">
+                    <div class="guide-card">
+                        <h3>🎧 Cómo usar tu Voz Clonada en Discord, Juegos o Zoom</h3>
+                        <div class="steps-list">
+                            <div class="step-item">
+                                <div class="step-num">1</div>
+                                <div class="step-desc">
+                                    <strong>Selecciona la Salida Secundaria en Configuración:</strong>
+                                    <p>En el panel derecho, en <em>"Dispositivo de Transmisión (Discord/Juegos)"</em>, elige <strong>CABLE Input (VB-Audio Virtual Cable)</strong> o tu canal de <strong>Voicemeeter</strong>.</p>
+                                </div>
+                            </div>
+                            <div class="step-item">
+                                <div class="step-num">2</div>
+                                <div class="step-desc">
+                                    <strong>Configura Discord o tu Videojuego:</strong>
+                                    <p>Abre Discord -> <em>Ajustes de Usuario</em> -> <em>Voz y Video</em> -> En <strong>Dispositivo de Entrada</strong> (Micrófono) selecciona <strong>CABLE Output (VB-Audio Virtual Cable)</strong>.</p>
+                                </div>
+                            </div>
+                            <div class="step-item">
+                                <div class="step-num">3</div>
+                                <div class="step-desc">
+                                    <strong>¡Habla y diviértete!</strong>
+                                    <p>Cada vez que hables por este programa o generes un texto, tus amigos en Discord escucharán directamente la voz de IA clonada.</p>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            </section>
+
+            <!-- Right Column: Voice Selection & Audio Routing -->
+            <aside class="panel side-panel">
+                <!-- Active Voice & Dropdown Selector -->
+                <div class="side-section">
+                    <div class="section-title space-between">
+                        <div style="display:flex; align-items:center; gap:8px;">
+                            <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a3 3 0 0 0-3 3v7a3 3 0 0 0 6 0V5a3 3 0 0 0-3-3Z"/><path d="M19 10v2a7 7 0 0 1-14 0v-2"/></svg>
+                            <span>Elegir Voz Clonada</span>
+                        </div>
+                    </div>
+
+                    <!-- Main Voice Dropdown Menu -->
+                    <div class="form-group">
+                        <select id="voiceDropdownSelect" class="form-select select-voice-main">
+                            <option value="">Cargando voces...</option>
+                        </select>
+                    </div>
+
+                    <div class="active-voice-box">
+                        <div class="voice-badge">VOZ ACTIVA SELECCIONADA</div>
+                        <div id="activeVoiceName" class="active-voice-name">Cargando...</div>
+                        <div id="activeVoiceDesc" class="active-voice-desc">...</div>
+                        <div id="activeVoiceId" class="active-voice-id">...</div>
+                    </div>
+                </div>
+
+                <!-- Voice Catalog / Bank -->
+                <div class="side-section">
+                    <div class="section-title space-between">
+                        <span>Lista Rápida de Voces</span>
+                        <button id="btnAddNewVoice" class="btn btn-sm btn-outline">+ Añadir ID</button>
+                    </div>
+
+                    <div id="voiceList" class="voice-list">
+                        <!-- Loaded dynamically -->
+                    </div>
+                </div>
+
+                <!-- Audio Output Routing -->
+                <div class="side-section">
+                    <div class="section-title">
+                        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polygon points="11 5 6 9 2 9 2 15 6 15 11 19 11 5"/><path d="M19.07 4.93a10 10 0 0 1 0 14.14M15.54 8.46a5 5 0 0 1 0 7.07"/></svg>
+                        <span>Enrutamiento de Audio</span>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label-sm">Dispositivo para escucharte (Auriculares):</label>
+                        <select id="selectPrimaryOutput" class="form-select">
+                            <option value="">Cargando dispositivos...</option>
+                        </select>
+                    </div>
+
+                    <div class="form-group">
+                        <label class="form-label-sm">Dispositivo de Transmisión (Discord / VB-Cable):</label>
+                        <select id="selectSecondaryOutput" class="form-select">
+                            <option value="">Cargando dispositivos...</option>
+                        </select>
+                    </div>
+
+                    <div class="checkbox-wrapper">
+                        <input type="checkbox" id="checkHearMyself">
+                        <label for="checkHearMyself">🔇 Escucharme en mis auriculares (Desmarcado = Solo se envía a Discord sin escucharte)</label>
+                    </div>
+                </div>
+            </aside>
+        </main>
+    </div>
+
+    <!-- Modal for Settings -->
+    <div id="settingsModal" class="modal-overlay hidden">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2>⚙️ Configuración General</h2>
+                <button class="modal-close" onclick="closeSettingsModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Fish Audio API Key:</label>
+                    <input type="text" id="settingApiKey" class="form-input" placeholder="sk-fish-...">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Modelo Fish Audio:</label>
+                    <select id="settingModel" class="form-select">
+                        <option value="s2.1-pro-free" selected>s2.1-pro-free (Predeterminado / Siempre activo)</option>
+                        <option value="s2.1-pro">s2.1-pro</option>
+                        <option value="s2-pro">s2-pro</option>
+                        <option value="s2">s2</option>
+                    </select>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Idioma / Acento de Reconocimiento:</label>
+                    <select id="settingLang" class="form-select">
+                        <option value="es-CL">🇨🇱 Español (Chile - Modismos y fonética chilena)</option>
+                        <option value="es-419">🌎 Español (Latinoamérica General)</option>
+                        <option value="es-ES">🇪🇸 Español (España)</option>
+                        <option value="es-MX">🇲🇽 Español (México)</option>
+                        <option value="es-AR">🇦🇷 Español (Argentina)</option>
+                        <option value="en-US">🇺🇸 English (US)</option>
+                    </select>
+                    <small class="form-help" style="color:var(--primary); margin-top:4px; display:block;">
+                        🧠 <strong>Motor Activo:</strong> Whisper AI + Filtro de Ruido Dinámico FFmpeg (Precisión Máxima)
+                    </small>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="closeSettingsModal()">Cancelar</button>
+                <button id="btnSaveSettings" class="btn btn-primary">Guardar Cambios</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Adding New Voice Reference ID -->
+    <div id="newVoiceModal" class="modal-overlay hidden">
+        <div class="modal-card">
+            <div class="modal-header">
+                <h2>➕ Añadir Nueva Voz de Fish Audio</h2>
+                <button class="modal-close" onclick="closeNewVoiceModal()">×</button>
+            </div>
+            <div class="modal-body">
+                <div class="form-group">
+                    <label class="form-label">Reference ID de Fish Audio:</label>
+                    <input type="text" id="newVoiceId" class="form-input" placeholder="Ej: 97582f301e1c4f93a514ceda15e23e26">
+                    <small class="form-help">Lo encuentras en la URL de cualquier voz pública en fish.audio</small>
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Nombre para la voz:</label>
+                    <input type="text" id="newVoiceName" class="form-input" placeholder="Ej: Mi Voz Clonada / Personaje">
+                </div>
+                <div class="form-group">
+                    <label class="form-label">Descripción (opcional):</label>
+                    <input type="text" id="newVoiceDesc" class="form-input" placeholder="Ej: Voz enérgica y juvenil">
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-outline" onclick="closeNewVoiceModal()">Cancelar</button>
+                <button id="btnSaveNewVoice" class="btn btn-primary">Guardar Voz</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast hidden"></div>
+
+    <script src="app.js"></script>
+</body>
+</html>

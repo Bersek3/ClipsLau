@@ -1,0 +1,182 @@
+{
+    "api_key": "sk-fish-MrvjytXetS4Gh8Yrlj7n380D3CvWK3T4McgK6WSk6Dc",
+    "selected_voice": "d9f0d3d3fe734af6acb5ecc9129bc49a",
+    "model": "s2.1-pro-free",
+    "language": "es-CL",
+    "input_device": null,
+    "output_device_primary": 39,
+    "output_device_secondary": 39,
+    "hear_myself": false,
+    "volume": 1.0,
+    "speed": 1.0,
+    "voices": [
+        {
+            "id": "d9f0d3d3fe734af6acb5ecc9129bc49a",
+            "name": "Dross Rotzank",
+            "description": "Voz de Dross (Terror y Misterio)",
+            "sample_text": "Les ha hablado Dross y les deseo buenas noches..."
+        },
+        {
+            "id": "a4e70883b9324211a5e91837a69c2b6f",
+            "name": "Don Francisco",
+            "description": "Voz de Mario Kreutzberger (Sábado Gigante)",
+            "sample_text": "¡¿Qué dice el público?!"
+        },
+        {
+            "id": "dfa5b230c8054f429e434f4a6e9bbdec",
+            "name": "Farid Dieck",
+            "description": "Voz de Farid (Reflexiones y Filosofía)",
+            "sample_text": "Las cosas no pasan por algo, pasan para algo."
+        },
+        {
+            "id": "f37045b497864c988c8691919f1c557a",
+            "name": "Mega (Locutor)",
+            "description": "Voz oficial del canal Mega",
+            "sample_text": "A continuación en Mega, no te pierdas el gran estreno."
+        },
+        {
+            "id": "02ecd5ab859f42cfb15ba5d1b71bc74b",
+            "name": "Gabriel Boric",
+            "description": "Voz de Gabriel Boric (Presidente de Chile)",
+            "sample_text": "Compañeros y compañeras, seguimos adelante con fuerza y convicción."
+        },
+        {
+            "id": "97582f301e1c4f93a514ceda15e23e26",
+            "name": "AuronPlay / Predeterminada",
+            "description": "Voz de Auronplay (Twitch / YouTube)",
+            "sample_text": "¡Hola a todos chavales! Pero bueno, ¿qué está pasando aquí?"
+        },
+        {
+            "id": "30ca8b4d162e463d818bb99101f4857e",
+            "name": "Lionel Messi",
+            "description": "Voz de Leo Messi (¿Qué mirás, bobo?)",
+            "sample_text": "¿Qué mirás, bobo? Andá pa' allá, bobo."
+        },
+        {
+            "id": "1f278d1516e54ff2b18189f5c71c9027",
+            "name": "Homero Simpson",
+            "description": "Voz de Homero Simpson (Los Simpson)",
+            "sample_text": "¡D'oh! Mmm... ¡rosquillas!"
+        },
+        {
+            "id": "4788d6bc34254724beec4d8fed512a3f",
+            "name": "Sebastián Piñera",
+            "description": "Voz de Sebastián Piñera (Expresidente de Chile)",
+            "sample_text": "Compatriotas, tiempos mejores están por venir."
+        },
+        {
+            "id": "c16b557e3765474eb0b5f58eec763094",
+            "name": "Augusto Pinochet",
+            "description": "Voz de Augusto Pinochet",
+            "sample_text": "¡Señores!... La patria está por sobre todas las cosas."
+        },
+        {
+            "id": "90cd415e0257431cbb3fe9d70fceeb14",
+            "name": "Tio Rene",
+            "description": "",
+            "sample_text": ""
+        },
+        {
+            "id": "49d39d466be44756ba765a49242cfd6a",
+            "name": "nicolas maduro",
+            "description": "",
+            "sample_text": ""
+        },
+        {
+            "id": "18d5dcc7904945569b728b88ddf0a1a1",
+            "name": "Messi ( prueba)",
+            "description": "",
+            "sample_text": ""
+        },
+        {
+            "id": "74fadda965294c4280843931010a7083",
+            "name": "Cristiano Ronaldo",
+            "description": "",
+            "sample_text": ""
+        },
+        {
+            "id": "9f850ee9ada24b20a6866825eaefd3f8",
+            "name": "Goku",
+            "description": "",
+            "sample_text": ""
+        },
+        {
+            "id": "8fb6fd42128d4b82bb1d8dbba6da64f6",
+            "name": "Mariano Closs",
+            "description": "",
+            "sample_text": ""
+        },
+        {
+            "id": "063240d1a2f34a8abcc20c8cfb8ffabd",
+            "name": "claudio palma",
+            "description": "",
+            "sample_text": ""
+        },
+        {
+            "id": "b1161d68925c41f7b54cca5a91580182",
+            "name": "Peruano",
+            "description": "",
+            "sample_text": ""
+        },
+        {
+            "id": "8f23453397d14e4d9a579bad5aab41a8",
+            "name": "xokas",
+            "description": "",
+            "sample_text": ""
+        },
+        {
+            "id": "0bf1d759a4d342548d108fb2513413cc",
+            "name": "SHREK",
+            "description": "",
+            "sample_text": ""
+        },
+        {
+            "id": "649999d3a5b444c6bf159bcbdaa52f42",
+            "name": "BURRO SHREK",
+            "description": "",
+            "sample_text": ""
+        },
+        {
+            "id": "ddfb915f6b3c40adb125f017878435c9",
+            "name": "JULIO CESAR RODRIGUEZ",
+            "description": "",
+            "sample_text": ""
+        },
+        {
+            "id": "ccee4a6d3b7249df9eae750a53dbb961",
+            "name": "FELIPE CAMIROAGA",
+            "description": "",
+            "sample_text": ""
+        },
+        {
+            "id": "087a4cf88ea94f638ceb37e66d95b92b",
+            "name": "FELIPE CAMIROAGA V2",
+            "description": "",
+            "sample_text": ""
+        },
+        {
+            "id": "a9b4081c9ff44264b19cd1835bb50952",
+            "name": "ERICK CARTMAN",
+            "description": "",
+            "sample_text": ""
+        },
+        {
+            "id": "a25199e3d7ac4e12bfe6b62ab33355c0",
+            "name": "MARADONA",
+            "description": "",
+            "sample_text": ""
+        },
+        {
+            "id": "7bd610c647ff4a48bd0584fef1a5ffba",
+            "name": "Huaso",
+            "description": "",
+            "sample_text": ""
+        },
+        {
+            "id": "51ea54dc9b7d46b49a58918742c1a2cd",
+            "name": "Davo",
+            "description": "",
+            "sample_text": ""
+        }
+    ]
+}
